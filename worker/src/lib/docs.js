@@ -3,8 +3,10 @@ import { isUuid } from './ids.js'
 
 /** Shared document helpers. Columns follow backend/migrations/004_documents.sql. */
 export const DOC_FIELDS =
-  'id, workspace_id, name, original_filename, document_type, status, visibility, summary, organisation, document_number, issue_date, expiry_date, current_version_id, page_count, is_favorite, is_pinned, created_by, deleted_by, deleted_at, created_at, updated_at'
+  'id, workspace_id, name, original_filename, previous_names, document_type, status, visibility, summary, organisation, document_number, issue_date, expiry_date, current_version_id, page_count, perceptual_hash, is_favorite, is_pinned, created_by, deleted_by, deleted_at, created_at, updated_at'
 export const VERSION_FIELDS = 'id, workspace_id, document_id, version_number, comment, previous_version_id, source, hash, ocr_status, created_by, created_at'
+/** Version row including the extracted text fields (contract "Version"). */
+export const VERSION_TEXT_FIELDS = `${VERSION_FIELDS}, ocr_text, ocr_language, ocr_confidence`
 export const FILE_FIELDS =
   'id, document_id, version_id, workspace_id, r2_object_key, original_filename, mime_type, size_bytes, sha256, page_number, kind, width, height, created_by, created_at'
 export const FILE_KINDS = ['original', 'processed', 'thumbnail', 'pdf', 'attachment']
@@ -19,6 +21,21 @@ export async function loadDocument(db, wsId, docId, { includeDeleted = false } =
   const doc = unwrap(await db.from('documents').select(DOC_FIELDS).eq('workspace_id', wsId).eq('id', docId).maybeSingle(), 'Load document')
   if (!doc || (doc.deleted_at && !includeDeleted)) throw notFound('Document not found')
   return doc
+}
+
+/**
+ * Base `documents` query with the visibility rules below applied for the
+ * caller's membership. Used by every list-like route (documents, search,
+ * albums, home) so the gate lives in SQL.
+ */
+export async function scopedDocumentsQuery(db, m, select = DOC_FIELDS) {
+  const q = db.from('documents').select(select).eq('workspace_id', m.workspace_id)
+  if (m.rank >= 30) return q
+  if (m.role_key === 'restricted') {
+    const linked = m.person_id ? await personDocumentIds(db, m.workspace_id, m.person_id) : []
+    return linked.length ? q.or(`created_by.eq.${m.user_id},id.in.(${linked.join(',')})`) : q.eq('created_by', m.user_id)
+  }
+  return q.or(`visibility.neq.private,created_by.eq.${m.user_id}`)
 }
 
 /** Document ids linked to a person (document_people). */

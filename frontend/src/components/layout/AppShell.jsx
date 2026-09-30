@@ -10,6 +10,10 @@ import { BottomNav } from './BottomNav'
 import { TopBar } from './TopBar'
 import { FullPageLoader } from '@/components/common/FullPageLoader'
 import { ErrorBox } from '@/components/common/ErrorBox'
+import { UploadQueueBanner } from '@/components/scanner/UploadQueueBanner'
+import { startUploadQueue } from '@/services/offline/uploadQueue'
+
+let queueStarted = false
 
 export function AppShell() {
   const { workspaceId, workspace, isLoading, isFetching, error, refetch } = useWorkspace()
@@ -20,6 +24,17 @@ export function AppShell() {
   useEffect(() => {
     if (workspace?.id) dispatch(setLastWorkspaceId(workspace.id))
   }, [workspace?.id, dispatch])
+
+  // Pending uploads (offline captures) retry automatically once the shell is up.
+  useEffect(() => {
+    if (queueStarted) return
+    queueStarted = true
+    try {
+      startUploadQueue()
+    } catch {
+      /* queue unavailable; uploads still work directly */
+    }
+  }, [])
 
   // First load, or a refetch that has not yet delivered a workspace we were just sent to.
   if (isLoading || (!workspace && isFetching)) return <FullPageLoader label="Opening your workspace..." />
@@ -45,6 +60,7 @@ export function AppShell() {
             Waiting for internet connection. Your changes are saved on this device.
           </div>
         )}
+        <UploadQueueBanner workspaceId={workspaceId} className="mx-4 mt-3 md:mx-6" />
         <main className="flex-1 px-4 pb-24 pt-4 md:px-6 lg:pb-8">
           <Outlet />
         </main>

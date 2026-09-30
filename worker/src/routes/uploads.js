@@ -1,197 +1,185 @@
 import { Hono } from 'hono'
 import { requireRole } from '../lib/workspace.js'
-import { unwrap, badRequest, tooLarge, unsupportedMedia, HttpError } from '../lib/errors.js'
+import { unwrap, badRequest } from '../lib/errors.js'
 import { activityFor } from '../lib/activity.js'
-import { detectAllowedType, MAX_UPLOAD_BYTES } from '../lib/mime.js'
-import { newId, isUuid, safeFilename, extensionOf } from '../lib/ids.js'
-import { sha256Hex } from '../lib/signing.js'
-import { DOC_FIELDS, VERSION_FIELDS, FILE_FIELDS, FILE_KINDS, objectKey, loadDocument, publicFile, loadVersions } from '../lib/docs.js'
+import { isUuid } from '../lib/ids.js'
+import { DOC_FIELDS, VERSION_FIELDS, FILE_KINDS, loadDocument, loadVersions, setDocumentLinks } from '../lib/docs.js'
+import { readMultipart, collectFormFiles, formList, formUuidList, formPageNumbers, storeFile, createVersion, finalizeVersion, versionFiles } from '../lib/uploadFiles.js'
 
 const uploads = new Hono()
 
 /**
  * POST /uploads  (multipart/form-data, editor+)
  * fields:
- *   file          required, one file (<= 25 MB)
- *   name|title    optional document name (defaults to the filename without extension)
- *   document_id   optional: add the file to an existing document instead of creating one
- *   new_version   optional "1": with document_id, create a new version instead of adding to the current one
- *   page_number   optional integer (default: next page in the version)
- *   kind          optional: original | processed | thumbnail | pdf | attachment (default original)
- *   sha256        optional client-computed hash (DOC-5); rejected if it does not match
- *   visibility    optional workspace | groups | people | private
- *   person_id     optional person the document belongs to (document_people, link_type owner)
- *   document_type optional
+ *   files[] | file   1..20 files (<= 25 MB each); each becomes a page of the same version
+ *   name|title       optional document name (defaults to the first filename without extension)
+ *   document_id      optional: add the files to an existing document instead of creating one
+ *   new_version      optional "1": with document_id, create a new version instead of adding to the current one
+ *   page_number | page_numbers[]  optional page numbers (default: next pages in the version)
+ *   kind             optional: original | processed | thumbnail | pdf | attachment (default original)
+ *   sha256 | sha256[] optional client-computed hashes (one per file); rejected on mismatch
+ *   visibility       optional workspace | groups | people | private
+ *   person_id | person_ids (json array)   people the document belongs to (document_people, link_type owner)
+ *   group_ids (json array)                groups to link
+ *   document_type    optional
+ *   perceptual_hash  optional image dHash (hex) stored on the document for duplicate detection
+ *   client_upload_id optional uuid: idempotent (the same id returns the first result again)
  * Response: { document, version, files, file }
  */
 uploads.post('/', requireRole('editor'), async (c) => {
   const db = c.get('db')
   const m = c.get('membership')
   const user = c.get('user')
-  const bucket = c.env.DOCUMENTS_BUCKET
 
-  const declaredLength = Number(c.req.header('content-length') || 0)
-  if (declaredLength > MAX_UPLOAD_BYTES + 64 * 1024) throw tooLarge('File exceeds the 25 MB limit')
+  const form = await readMultipart(c)
+  const files = collectFormFiles(form)
 
-  let form
-  try {
-    form = await c.req.formData()
-  } catch {
-    throw badRequest('Expected multipart/form-data')
+  const clientUploadId = String(form.get('client_upload_id') || '').trim() || null
+  if (clientUploadId) {
+    if (!isUuid(clientUploadId)) throw badRequest('client_upload_id must be a uuid')
+    const existing = unwrap(
+      await db.from('upload_sessions').select('document_id, version_id').eq('workspace_id', m.workspace_id).eq('client_upload_id', clientUploadId).eq('status', 'uploaded').maybeSingle(),
+      'Check upload session',
+    )
+    if (existing?.document_id) {
+      const doc = unwrap(await db.from('documents').select(DOC_FIELDS).eq('id', existing.document_id).maybeSingle(), 'Load document')
+      if (doc) {
+        const version = unwrap(await db.from('document_versions').select(VERSION_FIELDS).eq('id', existing.version_id || doc.current_version_id).maybeSingle(), 'Load version')
+        const list = version ? await versionFiles(db, version.id) : []
+        return c.json({ document: doc, version, files: list, file: list[0] || null, idempotent: true })
+      }
+    }
   }
-  const file = form.get('file')
-  if (!(file instanceof File)) throw badRequest('Missing "file" field')
-  if (file.size === 0) throw badRequest('File is empty')
-  if (file.size > MAX_UPLOAD_BYTES) throw tooLarge('File exceeds the 25 MB limit')
-
-  const originalName = safeFilename(file.name, 'upload')
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  const detected = detectAllowedType(bytes.subarray(0, 64), file.type, extensionOf(originalName))
-  if (!detected) throw unsupportedMedia(`File type not allowed (${file.type || 'unknown'})`)
-
-  const sha256 = await sha256Hex(bytes)
-  const clientHash = String(form.get('sha256') || '').toLowerCase()
-  if (clientHash && clientHash !== sha256) throw badRequest('sha256 mismatch: the file was altered in transit')
 
   const kind = FILE_KINDS.includes(form.get('kind')) ? form.get('kind') : 'original'
   const visibility = ['workspace', 'groups', 'people', 'private'].includes(form.get('visibility')) ? form.get('visibility') : m.workspace.default_visibility || 'workspace'
-  const personId = form.get('person_id') ? String(form.get('person_id')) : null
-  if (personId && !isUuid(personId)) throw badRequest('Invalid person_id')
+  const personIds = formUuidList(form, 'person_ids')
+  const singlePerson = form.get('person_id') ? String(form.get('person_id')) : null
+  if (singlePerson) {
+    if (!isUuid(singlePerson)) throw badRequest('Invalid person_id')
+    if (!personIds.includes(singlePerson)) personIds.push(singlePerson)
+  }
+  const groupIds = formUuidList(form, 'group_ids')
   const documentType = String(form.get('document_type') || '').trim().slice(0, 60) || null
+  const perceptualHash = String(form.get('perceptual_hash') || '').trim().toLowerCase().slice(0, 64) || null
+  const firstName = files[0].name || 'upload'
   const nameInput = String(form.get('name') || form.get('title') || '').trim()
-  const name = (nameInput || originalName.replace(/\.[a-z0-9]{1,8}$/i, '') || 'Untitled').slice(0, 200)
+  const name = (nameInput || firstName.replace(/\.[a-z0-9]{1,8}$/i, '') || 'Untitled').slice(0, 200)
+  const hashes = formList(form, 'sha256')
+  const pageNumbers = formPageNumbers(form, files.length)
 
   const documentIdInput = form.get('document_id') ? String(form.get('document_id')) : null
-  const now = new Date().toISOString()
   let document
   let version
   let createdDocument = false
+  let createdVersion = false
 
   if (documentIdInput) {
     document = await loadDocument(db, m.workspace_id, documentIdInput)
     const versions = await loadVersions(db, m.workspace_id, document.id)
     const current = versions.find((v) => v.id === document.current_version_id) || versions[0]
     if (form.get('new_version') === '1' || !current) {
-      const nextNumber = (versions[0]?.version_number || 0) + 1
-      version = unwrap(
-        await db
-          .from('document_versions')
-          .insert({ document_id: document.id, workspace_id: m.workspace_id, version_number: nextNumber, previous_version_id: current?.id ?? null, source: 'upload', hash: sha256, created_by: user.id })
-          .select(VERSION_FIELDS)
-          .single(),
-        'Create version',
-      )
-      document = unwrap(
-        await db.from('documents').update({ current_version_id: version.id, updated_at: now }).eq('id', document.id).select(DOC_FIELDS).single(),
-        'Point document at new version',
-      )
+      version = await createVersion(db, {
+        wsId: m.workspace_id,
+        documentId: document.id,
+        versionNumber: (versions[0]?.version_number || 0) + 1,
+        previousVersionId: current?.id ?? null,
+        source: 'upload',
+        actorId: user.id,
+      })
+      createdVersion = true
     } else {
       version = current
     }
   } else {
-    if (personId) {
-      const person = unwrap(await db.from('people').select('id').eq('workspace_id', m.workspace_id).eq('id', personId).is('deleted_at', null).maybeSingle(), 'Verify person')
-      if (!person) throw badRequest('person_id does not exist in this workspace')
+    if (personIds.length) {
+      const found = unwrap(await db.from('people').select('id').eq('workspace_id', m.workspace_id).in('id', personIds).is('deleted_at', null), 'Verify people')
+      if (found.length !== personIds.length) throw badRequest('One or more people do not exist in this workspace')
     }
     createdDocument = true
     document = unwrap(
       await db
         .from('documents')
-        .insert({ workspace_id: m.workspace_id, name, original_filename: originalName, document_type: documentType, status: 'ready', visibility, created_by: user.id })
+        .insert({ workspace_id: m.workspace_id, name, original_filename: firstName.slice(0, 200), document_type: documentType, status: 'ready', visibility, perceptual_hash: perceptualHash, created_by: user.id })
         .select(DOC_FIELDS)
         .single(),
       'Create document',
     )
     try {
-      version = unwrap(
-        await db
-          .from('document_versions')
-          .insert({ document_id: document.id, workspace_id: m.workspace_id, version_number: 1, source: 'upload', hash: sha256, created_by: user.id })
-          .select(VERSION_FIELDS)
-          .single(),
-        'Create version',
-      )
+      version = await createVersion(db, { wsId: m.workspace_id, documentId: document.id, versionNumber: 1, source: 'upload', actorId: user.id })
+      createdVersion = true
       document = unwrap(await db.from('documents').update({ current_version_id: version.id }).eq('id', document.id).select(DOC_FIELDS).single(), 'Set current version')
-      if (personId) {
-        unwrap(await db.from('document_people').insert({ workspace_id: m.workspace_id, document_id: document.id, person_id: personId, link_type: 'owner', created_by: user.id }), 'Link person')
-      }
+      await setDocumentLinks(db, m.workspace_id, document.id, { personIds: personIds.length ? personIds : undefined, groupIds: groupIds.length ? groupIds : undefined }, user.id)
     } catch (err) {
       await db.from('documents').delete().eq('id', document.id) // cascades
       throw err
     }
   }
 
-  // page number: explicit or next in this version (for this kind)
-  let pageNumber = parseInt(form.get('page_number'), 10)
-  if (!Number.isFinite(pageNumber) || pageNumber < 1) {
-    const countRes = await db.from('document_files').select('id', { count: 'exact', head: true }).eq('version_id', version.id).eq('kind', kind)
-    pageNumber = (countRes.count ?? 0) + 1
-  }
-
-  const fileId = newId()
-  const key = objectKey({ workspaceId: m.workspace_id, documentId: document.id, versionId: version.id, fileId, ext: detected.ext, kind })
-
-  await bucket.put(key, bytes, {
-    httpMetadata: { contentType: detected.mime, contentDisposition: `inline; filename="${encodeURIComponent(originalName)}"` },
-    customMetadata: { workspaceId: m.workspace_id, documentId: document.id, versionId: version.id, fileId, sha256, uploadedBy: user.id },
-    sha256,
-  })
-
-  let fileRow
+  const stored = []
+  let addedBytes = 0
   try {
-    fileRow = unwrap(
-      await db
-        .from('document_files')
-        .insert({
-          id: fileId,
-          document_id: document.id,
-          version_id: version.id,
-          workspace_id: m.workspace_id,
-          r2_object_key: key,
-          original_filename: originalName,
-          mime_type: detected.mime,
-          size_bytes: bytes.byteLength,
-          sha256,
-          page_number: pageNumber,
-          kind,
-          width: null,
-          height: null,
-          created_by: user.id,
-        })
-        .select(FILE_FIELDS)
-        .single(),
-      'Create file record',
-    )
+    for (let i = 0; i < files.length; i++) {
+      const res = await storeFile(c, { document, version, file: files[i], kind, pageNumber: pageNumbers[i], expectedSha256: hashes[i] || null })
+      stored.push(res)
+      addedBytes += res.size
+    }
   } catch (err) {
-    await bucket.delete(key).catch(() => {})
+    // roll back what this request created
+    if (stored.length) {
+      const keys = unwrap(await db.from('document_files').select('r2_object_key').in('id', stored.map((s) => s.row.id)), 'Load rollback keys').map((r) => r.r2_object_key)
+      if (keys.length) await c.env.DOCUMENTS_BUCKET.delete(keys).catch(() => {})
+      await db.from('document_files').delete().in('id', stored.map((s) => s.row.id))
+    }
     if (createdDocument) await db.from('documents').delete().eq('id', document.id)
-    throw err instanceof HttpError ? err : new HttpError(500, 'Upload failed', 'upload_failed')
+    else if (createdVersion) await db.from('document_versions').delete().eq('id', version.id)
+    throw err
   }
 
-  // Page bookkeeping (best effort): one document_pages row per original page, page_count on the document.
-  if (kind === 'original') {
-    const pageRes = await db
-      .from('document_pages')
-      .upsert({ workspace_id: m.workspace_id, document_id: document.id, version_id: version.id, page_number: pageNumber, file_id: fileId }, { onConflict: 'version_id,page_number' })
-    if (pageRes.error) console.warn('[upload] document_pages upsert failed:', pageRes.error.message)
-    const countRes = await db.from('document_files').select('id', { count: 'exact', head: true }).eq('version_id', version.id).eq('kind', 'original')
-    const updated = await db.from('documents').update({ page_count: countRes.count ?? pageNumber, updated_at: now }).eq('id', document.id).select(DOC_FIELDS).single()
-    if (!updated.error) document = updated.data
+  // version hash = hash of the first original file
+  if (createdVersion && stored[0]?.sha256) {
+    await db.from('document_versions').update({ hash: stored[0].sha256 }).eq('id', version.id)
+    version.hash = stored[0].sha256
+  }
+  const patch = {}
+  if (!createdDocument && perceptualHash) patch.perceptual_hash = perceptualHash
+  document = createdVersion || kind === 'original' ? await finalizeVersion(db, m, document, version, { addedBytes, patch }) : document
+  if (!createdVersion && kind !== 'original' && addedBytes) {
+    await db.from('workspaces').update({ storage_bytes: (Number(m.workspace.storage_bytes) || 0) + addedBytes }).eq('id', m.workspace_id)
   }
 
-  // storage accounting (best effort)
-  await db.from('workspaces').update({ storage_bytes: (Number(m.workspace.storage_bytes) || 0) + bytes.byteLength }).eq('id', m.workspace_id)
+  if (clientUploadId) {
+    await db.from('upload_sessions').upsert(
+      {
+        workspace_id: m.workspace_id,
+        client_upload_id: clientUploadId,
+        document_id: document.id,
+        version_id: version.id,
+        file_id: stored[0]?.row.id ?? null,
+        status: 'uploaded',
+        original_filename: stored[0]?.row.original_filename ?? null,
+        mime_type: stored[0]?.mime ?? null,
+        size_bytes: addedBytes,
+        sha256: stored[0]?.sha256 ?? null,
+        r2_object_key: stored[0]?.row.r2_object_key ?? null,
+        completed_at: new Date().toISOString(),
+        created_by: user.id,
+      },
+      { onConflict: 'workspace_id,client_upload_id' },
+    )
+  }
 
-  const files = unwrap(await db.from('document_files').select(FILE_FIELDS).eq('version_id', version.id).order('page_number'), 'Load version files')
+  const list = await versionFiles(db, version.id)
+  const publicStored = list.filter((f) => stored.some((s) => s.row.id === f.id))
   await activityFor(c)(
-    createdDocument ? 'uploaded' : version.version_number > 1 && form.get('new_version') === '1' ? 'version_uploaded' : 'file_added',
+    createdDocument ? 'uploaded' : createdVersion ? 'version_uploaded' : 'file_added',
     'document',
     document.id,
-    { name: document.name, file_id: fileId, mime_type: detected.mime, size_bytes: bytes.byteLength, version_number: version.version_number },
-    createdDocument ? `uploaded "${document.name}"` : `added a file to "${document.name}" (v${version.version_number})`,
+    { name: document.name, file_ids: stored.map((s) => s.row.id), size_bytes: addedBytes, version_number: version.version_number, kind },
+    createdDocument ? `uploaded "${document.name}"` : createdVersion ? `uploaded version ${version.version_number} of "${document.name}"` : `added ${stored.length} file(s) to "${document.name}" (v${version.version_number})`,
   )
 
-  return c.json({ document, version, files: files.map(publicFile), file: publicFile(fileRow) }, 201)
+  return c.json({ document, version, files: list, file: publicStored[0] || list[0] || null }, 201)
 })
 
 export default uploads

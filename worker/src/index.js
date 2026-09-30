@@ -18,13 +18,20 @@ import { fileUrlRoutes, fileServeRoutes } from './routes/files.js'
 import activity from './routes/activity.js'
 import notifications from './routes/notifications.js'
 import search from './routes/search.js'
+import savedSearches from './routes/searchSaved.js'
 import versions from './routes/versions.js'
+import documentText from './routes/documentText.js'
+import documentDetails from './routes/documentDetails.js'
+import tags from './routes/tags.js'
 import albums from './routes/albums.js'
-import reminders from './routes/reminders.js'
+import reminders, { documentReminderRoutes } from './routes/reminders.js'
 import { sharesRoutes, publicShareRoutes } from './routes/shares.js'
+import aiKeys from './routes/aiKeys.js'
 import rag from './routes/rag.js'
 import notes from './routes/notes.js'
+import home from './routes/home.js'
 import vault from './routes/vault.js'
+import { processDueReminders } from './lib/reminderCron.js'
 
 const app = new Hono()
 
@@ -78,8 +85,9 @@ app.route('/api/me', me)
 app.route('/api/notifications', notifications)
 app.route('/api/invites', inviteRoutes)
 app.route('/api/vault', vault)
+app.route('/api/ai/keys', aiKeys)
 app.route('/api/files', fileServeRoutes) // signature-authenticated
-app.route('/api/shares', publicShareRoutes)
+app.route('/api/shares', publicShareRoutes) // public share links (token + optional password)
 
 // /api/workspaces, /api/workspaces/:ws, /api/workspaces/:ws/terminology (auth + per-handler membership)
 app.route('/api/workspaces', workspaces)
@@ -92,15 +100,21 @@ ws.route('/', fileUrlRoutes) // /files/:fileId/url
 ws.route('/groups', groups)
 ws.route('/people', people)
 ws.route('/documents/:id/versions', versions)
+ws.route('/documents', documentText) // /:id/text, /:id/timeline, /written, /:id/written, /:id/content
+ws.route('/documents', documentDetails) // /:id/suggestions, /:id/metadata, /:id/tags, /check-duplicates, /:id/chunks
+ws.route('/documents', documentReminderRoutes) // /:id/reminders/auto
 ws.route('/documents', documents)
 ws.route('/uploads', uploads)
+ws.route('/tags', tags)
 ws.route('/activity', activity)
+ws.route('/search/saved', savedSearches)
 ws.route('/search', search)
 ws.route('/albums', albums)
 ws.route('/reminders', reminders)
 ws.route('/shares', sharesRoutes)
 ws.route('/rag', rag)
 ws.route('/notes', notes)
+ws.route('/', home) // /home, /stats
 app.route('/api/workspaces/:ws', ws)
 
 /* ---------- errors ---------- */
@@ -137,9 +151,17 @@ async function keepAlive(env) {
 
 export { app }
 
+async function runReminders(env) {
+  try {
+    await processDueReminders(env)
+  } catch (err) {
+    console.error('[cron] reminders threw:', err?.message || err)
+  }
+}
+
 export default {
   fetch: app.fetch,
   scheduled(event, env, ctx) {
-    ctx.waitUntil(keepAlive(env))
+    ctx.waitUntil(Promise.all([keepAlive(env), runReminders(env)]))
   },
 }

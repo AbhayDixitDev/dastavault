@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Search, Mic, ImageIcon, LogOut, UserCircle, Repeat } from 'lucide-react'
+import { Search, Mic, ImageIcon, LogOut, UserCircle, Repeat, Bell } from 'lucide-react'
+import { NotificationsSheet, useUnreadNotificationsCount } from '@/components/search/NotificationsSheet'
 import { useIsDesktop } from '@/hooks/useMediaQuery'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useAuth } from '@/hooks/useAuth'
@@ -21,6 +23,8 @@ export function TopBar() {
   const { workspace, workspaceId } = useWorkspace()
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const [notifOpen, setNotifOpen] = useState(false)
+  const unread = useUnreadNotificationsCount(workspaceId)
 
   const goSearch = (e) => {
     e.preventDefault()
@@ -56,7 +60,16 @@ export function TopBar() {
         </form>
       )}
 
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1">
+        <Button variant="ghost" size="icon" className="relative" title="Notifications" onClick={() => setNotifOpen(true)}>
+          <Bell className="size-5" />
+          {unread > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+              {unread > 9 ? '9+' : unread}
+            </span>
+          )}
+        </Button>
+        <NotificationsSheet open={notifOpen} onOpenChange={setNotifOpen} workspaceId={workspaceId} />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="rounded-full outline-none ring-ring/50 focus-visible:ring-2">

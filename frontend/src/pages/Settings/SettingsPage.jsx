@@ -5,6 +5,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { GeneralPanel } from '@/components/settings/GeneralPanel'
 import { TerminologyPanel } from '@/components/settings/TerminologyPanel'
 import { MembersPanel } from '@/components/settings/MembersPanel'
+import { AiKeysPanel } from '@/components/settings/AiKeysPanel'
 
 export function SettingsPage() {
   const { tab = 'general' } = useParams()
@@ -21,10 +22,12 @@ export function SettingsPage() {
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="words">Words</TabsTrigger>
           <TabsTrigger value="members">{t.member_label_plural}</TabsTrigger>
+          <TabsTrigger value="ai">Ask AI</TabsTrigger>
         </TabsList>
         <TabsContent value="general"><GeneralPanel /></TabsContent>
         <TabsContent value="words"><TerminologyPanel /></TabsContent>
         <TabsContent value="members"><MembersPanel canManage={can('admin')} /></TabsContent>
+        <TabsContent value="ai"><AiKeysPanel /></TabsContent>
       </Tabs>
     </div>
   )

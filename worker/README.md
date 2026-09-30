@@ -12,7 +12,10 @@ worker/
   .dev.vars.example      secrets template (copy to .dev.vars)
   src/index.js           app: request id, secure headers, CORS, error handler, route mounts, scheduled()
   src/lib/               auth (jose), workspace/role middleware, validation (zod), email (Brevo),
-                         signing (HMAC), mime sniffing, vault crypto (HKDF + AES-GCM), rate limit, pagination
+                         signing (HMAC), mime sniffing, vault crypto + aiCrypto (HKDF + AES-GCM), rate limit,
+                         pagination, docs (document helpers + visibility gate), uploadFiles (multipart/R2/version
+                         helpers), metadata (suggestions + confirmed metadata), queryUnderstanding, searchResults
+                         (enrichment + RRF), sanitize (HTML), reminderCron, ai/ (openai, gemini, anthropic; fetch only)
   src/routes/            one file per module (see route map)
   scripts/check.js       `node --check` over every file
 ```
@@ -53,9 +56,10 @@ override per environment there. `ALLOWED_ORIGINS` is a comma-separated list.
 | `npm run deploy` | `wrangler deploy` |
 | `npm run tail` | Live logs |
 
-The cron trigger (`0 */6 * * *`) runs `scheduled()` which does a tiny `select` on `roles` so the free-tier Supabase project
-is not paused for inactivity. Test locally with `curl "http://localhost:8787/__scheduled?cron=0+*/6+*+*+*"` (requires
-`wrangler dev --test-scheduled`).
+The cron trigger (`0 */6 * * *`) runs `scheduled()` which (1) does a tiny `select` on `roles` so the free-tier Supabase
+project is not paused for inactivity and (2) sends due reminders (`lib/reminderCron.js`: reminders with status
+pending/snoozed and `remind_at <= now` -> `notifications` rows for the recipients and Brevo emails, then `status='sent'`).
+Test locally with `curl "http://localhost:8787/__scheduled?cron=0+*/6+*+*+*"` (requires `wrangler dev --test-scheduled`).
 
 ## Conventions
 
@@ -65,7 +69,7 @@ is not paused for inactivity. Test locally with `curl "http://localhost:8787/__s
 - **Responses**: success is a JSON object with the resource under a named key (`{ profile }`, `{ workspaces }`, ...).
   Errors are `{ error, code?, details?, request_id }` with the proper status. Every response carries `X-Request-Id`.
 - **Pagination**: `?limit=&cursor=` and responses return `next_cursor` (null when done).
-- **Unbuilt routes** respond `501 { error: "Not implemented yet", code: "not_implemented" }` but already enforce role checks.
+- **Contract**: request/response shapes follow `../docs/API_CONTRACT.md` (sections 1-9). Deviations are listed at the end of this file.
 
 ## Route map
 
@@ -132,7 +136,7 @@ Legend: **min role** for workspace routes. `auth` = any signed-in user. `sig` = 
 
 | Method | Path | Access | Notes |
 |---|---|---|---|
-| POST | `/api/workspaces/:ws/uploads` | editor | multipart: `file` (<= 25 MB), `name?` (alias `title`), `document_id?`, `new_version?=1`, `page_number?`, `kind?`, `sha256?`, `visibility?`, `person_id?`, `document_type?` -> `{ document, version, files, file }`. Magic-byte MIME check (jpeg/png/webp/gif/heic/pdf, txt/md/csv, docx/xlsx). Creates `documents` + `document_versions` (source upload, hash) + `document_files` + `document_pages`, links `document_people`. R2 key `workspaces/{ws}/documents/{docId}/versions/{verId}/{kind}/{fileId}.{ext}` |
+| POST | `/api/workspaces/:ws/uploads` | editor | multipart: `files[]` (1..20, <= 25 MB each; `file` still accepted), `name?` (alias `title`), `document_id?`, `new_version?=1`, `page_number?` / `page_numbers[]?`, `kind?`, `sha256?` / `sha256[]?`, `visibility?`, `person_id?` / `person_ids?` (json array), `group_ids?`, `document_type?`, `perceptual_hash?`, `client_upload_id?` (uuid, idempotent via `upload_sessions`) -> `{ document, version, files, file }`. Magic-byte MIME check (jpeg/png/webp/gif/heic/pdf, txt/md/csv, docx/xlsx). Creates `documents` + `document_versions` (source upload, hash) + `document_files` + `document_pages`, links `document_people` / `document_groups`. R2 key `workspaces/{ws}/documents/{docId}/versions/{verId}/{kind}/{fileId}.{ext}` |
 | GET | `/api/workspaces/:ws/documents` | member | `?q=&person_id=&group_id=&document_type=&favorite=1&sort=created_at\|updated_at\|name\|expiry_date&order=&limit=&cursor=` -> `{ documents, next_cursor }` (each with `files` of the current version, `people`, `groups`) |
 | GET | `/api/workspaces/:ws/documents/trash` | editor | `{ documents, next_cursor }` |
 | GET | `/api/workspaces/:ws/documents/:id` | member | `{ document: { ..., versions, files, people, groups } }` |
@@ -142,7 +146,96 @@ Legend: **min role** for workspace routes. `auth` = any signed-in user. `sig` = 
 | DELETE | `/api/workspaces/:ws/documents/:id/purge` | admin | permanent (R2 objects + rows), only from trash -> `{ ok }` |
 | GET | `/api/workspaces/:ws/files/:fileId/url` | member | `?download=1` -> `{ url, expires_at, file_id, mime_type, size_bytes }` (5 minute signed URL) |
 | GET | `/api/files/:fileId?exp=&sig=[&download=1]` | sig | streams from R2 with `Content-Type`, `ETag`, `Cache-Control: private, max-age=300`, Range support |
-| * | `/api/workspaces/:ws/documents/:id/versions[...]` | editor/admin | 501 skeleton (Phase 7) |
+
+### Versions, text, written documents (contract section 2)
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/workspaces/:ws/documents/:id/versions` | member | `{ versions: [Version & { ocr_text, files }] }` |
+| POST | `/api/workspaces/:ws/documents/:id/versions` | editor | multipart like `/uploads` + `comment?` -> `{ version, files }` (new version, previous kept, `current_version_id` updated, activity `version_uploaded`) |
+| POST | `/api/workspaces/:ws/documents/:id/versions/:vid/restore` | editor | `{ comment? }` -> `{ version }` (new version `source=restore`; files are copied in R2, pages and text copied; chunks are not copied - re-run the pipeline) |
+| POST | `/api/workspaces/:ws/documents/:id/versions/:vid/files` | editor | multipart `files[]`, `kind` (processed\|thumbnail\|pdf\|attachment), `page_numbers[]?` -> `{ files }` (thumbnails also set `document_pages.thumbnail_file_id`) |
+| PUT | `/api/workspaces/:ws/documents/:id/text` | editor | `{ version_id, ocr_text, ocr_language, ocr_confidence, ocr_status, pages[] }` -> `{ ok }`. Updates `document_versions.ocr_*` (the DB trigger refreshes `search_text`), upserts `document_pages`, sets `status='ready'` + `page_count` |
+| GET | `/api/workspaces/:ws/documents/:id/timeline` | member | `{ items: [{ id, action, message, actor: {id, display_name}, metadata, created_at }] }` from `activity_logs` |
+| POST | `/api/workspaces/:ws/documents/written` | editor | `{ name, content_html, content_text, document_type?='written', person_ids?, group_ids? }` -> `{ document, version, files }`; HTML (sanitised) stored in R2 as kind `original` / `text/html`, text as `ocr_text` |
+| PUT | `/api/workspaces/:ws/documents/:id/written` | editor | `{ content_html, content_text, comment? }` -> `{ version, files }` (new version, `source=edit`) |
+| GET | `/api/workspaces/:ws/documents/:id/content` | member | `{ content_html, content_text, version_id }` (reads the HTML/text file of the current version back from R2) |
+
+### Details, suggestions, tags, duplicates, chunks (contract section 3)
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/workspaces/:ws/documents/:id/suggestions` | member | `{ suggestions: [{ id, key, value, confidence, source, accepted_at, status }] }` (`source` `rules` maps to the DB value `rule`) |
+| PUT | `/api/workspaces/:ws/documents/:id/suggestions` | editor | `{ version_id?, suggestions[] }` replaces the set -> `{ suggestions }` |
+| POST | `/api/workspaces/:ws/documents/:id/suggestions/:sid/accept` | editor | copies the value into `document_metadata` (+ mirrors well-known keys) -> `{ document, metadata }` |
+| PATCH | `/api/workspaces/:ws/documents/:id/metadata` | editor | `{ fields: { key: value \| null } }` -> `{ metadata, document }`. Mirrors `document_type, organisation, document_number, issue_date, expiry_date, summary` to columns, `person_name`/`person_id` -> `document_people`, `group_id` -> `document_groups`, `suggested_name` -> rename |
+| GET/POST | `/api/workspaces/:ws/tags` | member / editor | `{ tags: [{ id, name, color, document_count }] }` / `{ name, color? }` -> `{ tag }` (case-insensitive unique) |
+| PATCH/DELETE | `/api/workspaces/:ws/tags/:id` | editor / admin | `{ tag }` / `{ ok }` |
+| PUT | `/api/workspaces/:ws/documents/:id/tags` | editor | `{ tag_ids?, names? }` replaces the set (names created if missing) -> `{ tags }` |
+| POST | `/api/workspaces/:ws/documents/check-duplicates` | member | `{ sha256?[], perceptual_hash?, document_number?, text_sample?, exclude_document_id? }` -> `{ matches: [{ document, reason, score }] }` (exact sha256 via `document_files`, dHash hamming <= 10 on `documents.perceptual_hash`, same number, pg_trgm text similarity via `similar_documents_by_text()` from migration 011) |
+| PUT | `/api/workspaces/:ws/documents/:id/chunks` | editor | `{ version_id, embedding_model, embedding_version, dimension (384), chunks[] }` deletes the version's chunks, inserts in batches of 100 -> `{ count }` |
+| GET | `/api/workspaces/:ws/documents/:id/chunks?version_id` | member | `{ chunks: [{ id, chunk_number, page_number, section, content }] }` |
+
+### Search (contract section 4)
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/workspaces/:ws/search` | member | `q, person_id, group_id, document_type, tag, date_from, date_to, expiry_from, expiry_to, uploaded_by, file_type, limit` -> `SearchResponse`. Query understanding (`lib/queryUnderstanding.js`: relation words via `people.user_id` + `person_relationships`, type synonyms, years/months, document numbers, people by trigram similarity) + `search_documents_fts()` + exact name/number matches; filters applied in SQL; RRF (k=60) then boosts (+0.05 exact name, +0.04 person, +0.04 number); notes matching `notes.search_text` are included with `kind:'note'`. Each hit carries `thumbnail_file_id`, `people`, `tags` (3 batched queries). Also records the query in `saved_searches` (`kind='recent'`) |
+| POST | `/api/workspaces/:ws/search/hybrid` | member | `{ q, embedding?[384], filters?, limit? }` -> adds `search_chunks()` (vector) to the fusion |
+| POST | `/api/workspaces/:ws/search/image` | member | `{ perceptual_hash?, text_sample?, embedding? }` -> hamming <= 10 matches boosted + text sample FTS + vector |
+| GET | `/api/workspaces/:ws/search/suggest?q=` | member | `{ people, tags, types, recent }` |
+| GET/POST | `/api/workspaces/:ws/search/saved` | member | `{ searches }` / `{ name, query, filters }` -> `{ search }` (per user) |
+| DELETE | `/api/workspaces/:ws/search/saved/:id` | member | `{ ok }` |
+
+### Albums, reminders, shares (contract section 5)
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET/POST | `/api/workspaces/:ws/albums` | member / editor | `{ albums: [{ id, name, kind, description, cover_file_id, item_count, rules, created_at }] }` / `{ name, kind, description?, rules? }` -> `{ album }`. `rules` (`{ all: [{ field, op, value }] }`) is stored in `albums.rules` (migration 011) and evaluated live as one PostgREST query; `person_id`/`group_id`/`tag` rules resolve through the link tables (`.in('id', ids)`) |
+| GET | `/api/workspaces/:ws/albums/:id?cursor&limit` | member | `{ album, documents, next_cursor }` |
+| PATCH/DELETE | `/api/workspaces/:ws/albums/:id` | editor | `{ name?, description?, rules?, cover_file_id? }` -> `{ album }` / `{ ok }` |
+| POST | `/api/workspaces/:ws/albums/:id/items` | editor | `{ document_ids }` -> `{ added }` (manual albums only) |
+| DELETE | `/api/workspaces/:ws/albums/:id/items/:documentId` | editor | `{ ok }` |
+| GET | `/api/workspaces/:ws/reminders?upcoming_days=30&document_id=` | member | `{ reminders: [{ id, document_id, document_name, title, remind_at, field, channel, status, created_at }] }` (`field` = `field_name`, `channel` app\|email\|both = `channels[]`) |
+| GET | `/api/workspaces/:ws/reminders/expiring?days=30` | member | `{ documents: [Doc & { days_left }] }` |
+| POST | `/api/workspaces/:ws/reminders` | editor | `{ document_id, title, remind_at, field?, channel? }` -> `{ reminder }` |
+| PATCH/DELETE | `/api/workspaces/:ws/reminders/:id` | editor | `{ title?, remind_at?, status?, channel? }` -> `{ reminder }` / `{ ok }` |
+| POST | `/api/workspaces/:ws/documents/:id/reminders/auto` | editor | creates the missing 30/7/1-day reminders for `expiry_date` (only future ones) -> `{ reminders }` |
+| GET | `/api/workspaces/:ws/shares?document_id=` | member | `{ shares: [{ id, document_id, kind, target_id, token, url, expires_at, allow_download, has_password, views, created_at }] }` (non-admins see their own / shared-with-them) |
+| POST | `/api/workspaces/:ws/shares` | editor | `{ document_id, kind, target_id?, expires_in_hours?=72, password?, allow_download? }` -> `{ share }` (`url = ${APP_URL}/s/${token}`; password stored as sha256(`token:password`); member shares also create a notification) |
+| DELETE | `/api/workspaces/:ws/shares/:id` | editor | sets `revoked_at` -> `{ ok }` |
+| GET | `/api/shares/:token` | public, rate limited | header `x-share-password?` -> `{ document: { id, name, document_type, page_count }, files: [{ id, kind, page_number, mime_type, url, download_url? }], allow_download }`; 401 `{ code: 'password_required' }`, 410 when expired. File URLs are signed for 15 minutes; `view_count` incremented |
+
+### AI keys and Ask your documents (contract section 6)
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET/POST | `/api/ai/keys` | auth | `{ keys }` (never the key) / `{ provider, api_key, label?, model?, base_url?, is_default? }` -> `{ key }`. One key per provider per user (upsert); encrypted with AES-GCM under HKDF(`VAULT_RECOVERY_SECRET`, `ai:<userId>`) (`lib/aiCrypto.js`) |
+| DELETE | `/api/ai/keys/:id` | auth | `{ ok }` |
+| POST | `/api/ai/keys/:id/test` | auth | `{ ok, model, latency_ms }` (`ok:false` + `error` when the provider rejects the key) |
+| POST | `/api/workspaces/:ws/rag/ask` | member | `{ question, embedding?, document_id?, key_id?, history? }` -> `{ answer, not_found, sources: [{ document_id, document_name, page_number, chunk_id, snippet }], provider, model }`. Retrieval: `search_documents_fts` + keyword chunks + `search_chunks` (when `embedding` given), RRF-fused, visibility-scoped, max 12 chunks, `[n]` citations. `400 { code: 'ai_key_required' }` when the user has no key |
+| POST | `/api/workspaces/:ws/rag/extract` | editor | `{ document_id, version_id, key_id? }` -> `{ suggestions }` (first 12k chars of the version text -> JSON with the well-known keys, stored as suggestions `source='ai'`) |
+
+Providers (`lib/ai/`): `openai.js` (OpenAI, Groq, local/custom via `base_url`, chat completions), `gemini.js` (`generateContent`), `anthropic.js` (`/v1/messages`). fetch only, no SDKs.
+
+### Notes (contract section 7)
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/workspaces/:ws/notes?q&pinned=1&cursor&limit` | member | `{ notes, next_cursor }` (others' private notes hidden) |
+| GET | `/api/workspaces/:ws/notes/trash` | editor | trashed notes |
+| POST | `/api/workspaces/:ws/notes` | editor | `{ title, content_html, content_text, color?, is_pinned?, is_private?, tags?, links?, encrypted_blob?, iv? }` -> `{ note }` (HTML sanitised again: `<script>`, `on*=`, `javascript:` stripped; private notes need `encrypted_blob`) |
+| GET | `/api/workspaces/:ws/notes/:id` | member | `{ note: Note & { links } }` |
+| PATCH | `/api/workspaces/:ws/notes/:id` | editor | same fields + `updated_at`; stale -> `409 { code: 'conflict', note }`; `links` replaces `note_links`. Creator, or admin for non-private notes |
+| DELETE | `/api/workspaces/:ws/notes/:id` | editor | soft -> `{ ok }` |
+| POST | `/api/workspaces/:ws/notes/:id/restore` | editor | `{ note }` |
+
+### Home and stats (contract section 9)
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/workspaces/:ws/home` | member | `{ recent, expiring (days_left), favorites, counts: { documents, people, groups, albums, notes }, storage_bytes }` |
+| GET | `/api/workspaces/:ws/stats` | admin | `{ documents, versions, files, storage_bytes, people, groups, members, chunks, last_activity_at }` |
 
 Visibility: editors and above see all workspace documents; viewers see everything except others' `private` uploads;
 restricted members only see documents they uploaded or that are linked (`document_people`) to the person whose
@@ -192,17 +285,11 @@ salt) only to count wrong attempts. Lockout is derived from `failed_attempts` al
    The client re-wraps the key with the new PIN and calls `complete` with the token, new salts, verifier and wrapped key.
    All passwords are kept.
 
-### Activity and skeletons
+### Activity
 
 | Method | Path | Access | Notes |
 |---|---|---|---|
 | GET | `/api/workspaces/:ws/activity` | member | `?limit=&cursor=&entity_type=&entity_id=&action=` -> `{ items: [ { action, entity_type, entity_id, message, metadata, actor, created_at } ], next_cursor }` |
-| GET/POST | `/api/workspaces/:ws/search[/semantic\|/saved]` | member | 501 (Phase 5/6) |
-| * | `/api/workspaces/:ws/albums[...]` | member/editor | 501 (Phase 7) |
-| * | `/api/workspaces/:ws/reminders[...]` | member/editor | 501 (Phase 7) |
-| * | `/api/workspaces/:ws/shares[...]`, `/api/shares/:token` | editor / public | 501 (Phase 7) |
-| POST | `/api/workspaces/:ws/rag/ask`, `/rag/index/:docId` | viewer / editor | 501 (Phase 8) |
-| * | `/api/workspaces/:ws/notes[...]` | member/editor | 501 (Phase 9) |
 
 ## Database alignment
 
@@ -227,6 +314,27 @@ Chaabi follows `009_vault.sql`:
 - `vault_otp_codes` are keyed by `user_id` + `purpose` with `consumed_at` / `max_attempts`.
 - `vault_activity_logs` records `vault_created, unlocked, unlock_failed, locked_out, pin_changed, pin_reset_requested,
   pin_reset, item_added, item_changed, item_deleted, item_restored, item_purged, history_deleted`.
+
+Phase 2-9 routes need `backend/migrations/011_phase_features.sql` (additive, idempotent):
+
+- `reminders.status` accepts the contract values (`pending`, `done`, `snoozed`) and the unique offset index only applies
+  when `field_name` is set (several ad-hoc reminders per document).
+- `albums.rules jsonb` (smart album rules as sent by the API) and `albums.cover_file_id`.
+- `search_documents_fts()` / `search_chunks()` also work when called by the Worker with the service role
+  (`current_user = 'service_role'`); before 011 they returned no rows outside a user session because
+  `is_workspace_member()` needs `auth.uid()`.
+- `similar_documents_by_text(ws, sample, lim)` for duplicate detection by text.
+
+### Contract deviations
+
+- `POST /documents/:id/versions/:vid/restore` copies files, pages and text but not `document_chunks` (re-run the pipeline).
+- Suggestions: `source: 'rules'` is stored as `rule` (DB check constraint) and mapped back on read.
+- Smart album rules live in `albums.rules` (jsonb), not `smart_album_rules` (its field/operator check list does not match
+  the contract's rule fields).
+- Reminders: `field` <-> `field_name`, `channel` <-> `channels[]`; older rows with `status='scheduled'` are reported as `pending`.
+- `GET /api/shares/:token` also returns `download_url` per file when `allow_download` is true, and 410 for expired links.
+- `POST /api/ai/keys` upserts on `(user_id, provider)` (the table allows one key per provider per user).
+- Search responses always return `next_cursor: null` (results are ranked, capped at `limit`).
 
 ## Security notes
 

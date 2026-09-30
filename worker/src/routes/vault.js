@@ -67,6 +67,8 @@ function publicVault(v) {
     failed_attempts: v.failed_attempts,
     kdf: v.kdf,
     kdf_iterations: v.kdf_iterations,
+    // Salt for the PIN verifier is not secret; the client needs it to compute the verifier.
+    pin_verifier_salt: v.pin_verifier_salt,
     pin_length: v.pin_length,
     last_unlocked_at: v.last_unlocked_at,
     pin_changed_at: v.pin_changed_at,

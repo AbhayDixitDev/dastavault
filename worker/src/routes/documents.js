@@ -6,21 +6,13 @@ import { applyCursor, pageResult } from '../lib/pagination.js'
 import { activityFor } from '../lib/activity.js'
 import {
   DOC_FIELDS, loadDocument, loadVersions, loadFiles, attachSummaries, assertCanView, publicFile,
-  personDocumentIds, groupDocumentIds, setDocumentLinks,
+  personDocumentIds, groupDocumentIds, setDocumentLinks, scopedDocumentsQuery,
 } from '../lib/docs.js'
 
 const documents = new Hono()
 
-/** Base query with the visibility rules from lib/docs.js applied. Returns null when nothing can match. */
-async function scopedQuery(db, m) {
-  let q = db.from('documents').select(DOC_FIELDS).eq('workspace_id', m.workspace_id)
-  if (m.rank >= 30) return q
-  if (m.role_key === 'restricted') {
-    const linked = m.person_id ? await personDocumentIds(db, m.workspace_id, m.person_id) : []
-    return linked.length ? q.or(`created_by.eq.${m.user_id},id.in.(${linked.join(',')})`) : q.eq('created_by', m.user_id)
-  }
-  return q.or(`visibility.neq.private,created_by.eq.${m.user_id}`)
-}
+/** Base query with the visibility rules from lib/docs.js applied. */
+const scopedQuery = (db, m) => scopedDocumentsQuery(db, m)
 
 async function listPage(c, { deleted }) {
   const db = c.get('db')

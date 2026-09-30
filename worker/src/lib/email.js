@@ -81,3 +81,30 @@ export function sendOtpEmail(env, { to, code, minutes = 10 }) {
     </div>`
   return sendEmail(env, { to, subject, html, text, tags: ['vault-otp'] })
 }
+
+/** Due reminder (expiry / renewal). `link` points at the document in the app. */
+export function sendReminderEmail(env, { to, title, documentName, workspaceName, dueDate, link }) {
+  const subject = `Reminder: ${title}`
+  const when = dueDate ? `Due date: ${dueDate}.` : ''
+  const text = [
+    `${title}`,
+    '',
+    documentName ? `Document: ${documentName}` : '',
+    workspaceName ? `Workspace: ${workspaceName}` : '',
+    when,
+    '',
+    link ? `Open the document: ${link}` : '',
+  ]
+    .filter((line, i, arr) => line !== '' || (i > 0 && arr[i - 1] !== ''))
+    .join('\n')
+  const html = `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:16px;line-height:1.5;color:#1a1a1a">
+      <h2 style="margin:0 0 12px">${escapeHtml(title)}</h2>
+      ${documentName ? `<p>Document: <strong>${escapeHtml(documentName)}</strong></p>` : ''}
+      ${workspaceName ? `<p style="font-size:14px;color:#555">Workspace: ${escapeHtml(workspaceName)}</p>` : ''}
+      ${dueDate ? `<p style="font-size:14px;color:#555">Due date: ${escapeHtml(dueDate)}</p>` : ''}
+      ${link ? `<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:12px 20px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Open document</a></p>` : ''}
+      <p style="font-size:13px;color:#777">You receive this because a reminder was set on this document in DastaVault.</p>
+    </div>`
+  return sendEmail(env, { to, subject, html, text, tags: ['reminder'] })
+}
