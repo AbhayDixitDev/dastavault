@@ -42,7 +42,7 @@ export function TerminologyPanel() {
             <div className="flex flex-wrap gap-2">
               {WORKSPACE_KINDS.filter((k) => k.key !== 'custom').map((k) => (
                 <Button key={k.key} type="button" variant="outline" size="sm" onClick={() => setValues({ ...values, ...TERMINOLOGY_TEMPLATES[k.key] })}>
-                  {k.emoji} Use {k.title} words
+                  Use {k.title} words
                 </Button>
               ))}
             </div>

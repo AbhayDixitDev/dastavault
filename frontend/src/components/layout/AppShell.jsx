@@ -12,7 +12,7 @@ import { FullPageLoader } from '@/components/common/FullPageLoader'
 import { ErrorBox } from '@/components/common/ErrorBox'
 
 export function AppShell() {
-  const { workspaceId, workspace, isLoading, error, refetch } = useWorkspace()
+  const { workspaceId, workspace, isLoading, isFetching, error, refetch } = useWorkspace()
   const isDesktop = useIsDesktop()
   const dispatch = useDispatch()
   const { online } = useSelector(selectUi)
@@ -21,7 +21,8 @@ export function AppShell() {
     if (workspace?.id) dispatch(setLastWorkspaceId(workspace.id))
   }, [workspace?.id, dispatch])
 
-  if (isLoading) return <FullPageLoader label="Opening your workspace..." />
+  // First load, or a refetch that has not yet delivered a workspace we were just sent to.
+  if (isLoading || (!workspace && isFetching)) return <FullPageLoader label="Opening your workspace..." />
 
   if (error) {
     return (

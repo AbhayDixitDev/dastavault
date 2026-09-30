@@ -6,7 +6,7 @@ import { Plus, ChevronRight, LogOut } from 'lucide-react'
 import { useGetWorkspacesQuery } from '@/store/api/workspacesApi'
 import { selectUi } from '@/store/slices/uiSlice'
 import { useAuth } from '@/hooks/useAuth'
-import { kindEmoji } from '@/components/layout/WorkspaceSwitcher'
+import { KindIcon } from '@/components/common/KindIcon'
 import { Logo } from '@/components/common/Logo'
 import { FullPageLoader } from '@/components/common/FullPageLoader'
 import { ErrorBox } from '@/components/common/ErrorBox'
@@ -14,14 +14,14 @@ import { Button } from '@/components/ui/button'
 import { roleName } from '@/constants/roles'
 
 export function WorkspaceSwitcherPage() {
-  const { data: workspaces, isLoading, error, refetch } = useGetWorkspacesQuery()
+  const { data: workspaces, isLoading, isFetching, error, refetch } = useGetWorkspacesQuery()
   const { lastWorkspaceId } = useSelector(selectUi)
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
   useEffect(() => {
-    if (!workspaces) return
+    if (!workspaces || isFetching) return
     if (workspaces.length === 0) {
       navigate('/onboarding', { replace: true })
       return
@@ -58,7 +58,7 @@ export function WorkspaceSwitcherPage() {
                 to={`/w/${w.id}`}
                 className="flex items-center gap-3 rounded-2xl border bg-card p-4 transition-colors hover:border-primary hover:bg-primary/5"
               >
-                <span className="text-2xl">{kindEmoji(w.kind)}</span>
+                <KindIcon kind={w.kind} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold">{w.name}</span>
                   <span className="block text-xs text-muted-foreground">

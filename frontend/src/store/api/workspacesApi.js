@@ -27,6 +27,20 @@ export const workspacesApi = baseApi.injectEndpoints({
     createWorkspace: build.mutation({
       query: (body) => ({ url: '/workspaces', method: 'POST', body }),
       transformResponse: (r) => r.workspace,
+      // Put the new workspace into the cached list immediately so the app can
+      // open it without waiting for a refetch (avoids bouncing back to onboarding).
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data: ws } = await queryFulfilled
+          dispatch(
+            workspacesApi.util.updateQueryData('getWorkspaces', undefined, (draft) => {
+              if (!draft.some((w) => w.id === ws.id)) draft.push(ws)
+            }),
+          )
+        } catch {
+          /* handled by caller */
+        }
+      },
       invalidatesTags: ['Workspaces'],
     }),
     updateWorkspace: build.mutation({

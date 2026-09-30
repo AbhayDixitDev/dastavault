@@ -54,7 +54,7 @@ export function GeneralPanel() {
         <CardHeader>
           <CardTitle>About</CardTitle>
           <CardDescription>
-            {kind?.emoji} {kind?.title} · You are {roleName(role)}
+            {kind?.title} · You are {roleName(role)}
           </CardDescription>
         </CardHeader>
         <CardContent>

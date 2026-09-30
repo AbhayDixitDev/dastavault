@@ -6,6 +6,7 @@ import { ArrowLeft, Check } from 'lucide-react'
 import { WORKSPACE_KINDS, TERMINOLOGY_FIELDS, terminologyFor } from '@/constants/terminology'
 import { useCreateWorkspaceMutation, useGetWorkspacesQuery } from '@/store/api/workspacesApi'
 import { Logo } from '@/components/common/Logo'
+import { KindIcon } from '@/components/common/KindIcon'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -77,7 +78,7 @@ export function OnboardingPage() {
                   whileTap={{ scale: 0.98 }}
                   className="rounded-2xl border bg-card p-5 text-left transition-colors hover:border-primary hover:bg-primary/5"
                 >
-                  <span className="text-3xl">{k.emoji}</span>
+                  <KindIcon kind={k.key} size="lg" />
                   <h3 className="mt-2 font-semibold">{k.title}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">{k.description}</p>
                 </motion.button>
@@ -91,7 +92,7 @@ export function OnboardingPage() {
             <button type="button" onClick={() => setStep(1)} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
               <ArrowLeft className="size-4" /> Back
             </button>
-            <div className="text-3xl">{kindInfo?.emoji}</div>
+            <KindIcon kind={kind} size="lg" />
             <h1 className="mt-2 text-2xl font-bold">Name your {terms.workspace_label.toLowerCase()}</h1>
             <p className="mt-1 text-muted-foreground">For example: {kind === 'family' ? 'Patel Family' : kind === 'company' ? 'ABC Technologies' : kind === 'school' ? 'Sunrise Public School' : 'My Documents'}</p>
 
