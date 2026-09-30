@@ -1,0 +1,23 @@
+{
+  "name": "dastavault-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DastaVault API - Cloudflare Worker (Hono) backing the DastaVault PWA",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "node scripts/check.js",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.58.0",
+    "hono": "^4.9.0",
+    "jose": "^6.1.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  }
+}

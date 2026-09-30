@@ -1,0 +1,32 @@
+{
+  // DastaVault API - Cloudflare Worker configuration
+  // Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dastavault-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "observability": {
+    "enabled": true
+  },
+
+  // Private R2 bucket. Files are only ever served through signed Worker URLs.
+  "r2_buckets": [
+    {
+      "binding": "DOCUMENTS_BUCKET",
+      "bucket_name": "document-manager-files"
+    }
+  ],
+
+  // Non-secret configuration. Secrets live in .dev.vars (local) and `wrangler secret put` (prod).
+  "vars": {
+    "ALLOWED_ORIGINS": "http://localhost:5173",
+    "APP_URL": "http://localhost:5173"
+  },
+
+  // Keep-alive ping to Supabase every 6 hours so the free-tier project is not paused.
+  "triggers": {
+    "crons": ["0 */6 * * *"]
+  }
+}

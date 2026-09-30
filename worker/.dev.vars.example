@@ -1,0 +1,25 @@
+# Copy to .dev.vars for local development (wrangler dev reads it automatically).
+# NEVER commit .dev.vars. In production set each one with `wrangler secret put NAME`.
+
+# Supabase project (Settings -> API)
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...service-role-key...
+
+# Optional. Only needed for projects still issuing HS256 access tokens
+# (Settings -> API -> JWT Secret). New projects use asymmetric keys served
+# from /auth/v1/.well-known/jwks.json and do not need this.
+SUPABASE_JWT_SECRET=
+
+# Random 32+ byte secret used to HMAC-sign short-lived file URLs.
+# Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+FILE_URL_SIGNING_SECRET=change-me-64-hex-chars
+
+# Random 32+ byte secret. A per-user AES key is derived from it (HKDF) to wrap
+# the Chaabi vault key for email PIN recovery. Rotating it breaks recovery for
+# all existing vaults, so keep it safe and backed up.
+VAULT_RECOVERY_SECRET=change-me-64-hex-chars
+
+# Brevo transactional email (https://app.brevo.com/settings/keys/api)
+BREVO_API_KEY=
+BREVO_SENDER_EMAIL=no-reply@example.com
+BREVO_SENDER_NAME=DastaVault
