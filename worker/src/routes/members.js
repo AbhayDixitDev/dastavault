@@ -9,7 +9,19 @@ import { sendInviteEmail } from '../lib/email.js'
 import { randomToken, isUuid } from '../lib/ids.js'
 import { ensureProfile } from './me.js'
 
-const MEMBER_FIELDS = 'id, workspace_id, user_id, role_key, person_id, invited_by, joined_at'
+const MEMBER_FIELDS = 'id, workspace_id, user_id, role_key, invited_by, joined_at'
+
+/** Attaches person_id (people.user_id link) to member rows. */
+async function attachPersonIds(db, wsId, rows) {
+  const ids = rows.map((r) => r.user_id).filter(Boolean)
+  const map = new Map()
+  if (ids.length) {
+    const people = unwrap(await db.from('people').select('id, user_id').eq('workspace_id', wsId).in('user_id', ids).is('deleted_at', null), 'Load linked people')
+    for (const p of people) map.set(p.user_id, p.id)
+  }
+  for (const r of rows) r.person_id = map.get(r.user_id) ?? null
+  return rows
+}
 const INVITE_FIELDS = 'id, workspace_id, email, role_key, token, status, invited_by, expires_at, accepted_at, accepted_by, created_at'
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -39,6 +51,7 @@ membersRoutes.get('/members', async (c) => {
     'List members',
   )
   await attachProfiles(db, rows, 'user_id', 'profile')
+  await attachPersonIds(db, m.workspace_id, rows)
   return c.json({ members: rows })
 })
 
@@ -62,6 +75,7 @@ membersRoutes.patch('/members/:memberId', requireRole('admin'), async (c) => {
     'Update member role',
   )
   await attachProfiles(db, [member], 'user_id', 'profile')
+  await attachPersonIds(db, me.workspace_id, [member])
   await activityFor(c)('member.role_changed', 'member', member.id, { user_id: member.user_id, from: target.role_key, to: role_key })
   return c.json({ member })
 })

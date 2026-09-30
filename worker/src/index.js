@@ -135,6 +135,8 @@ async function keepAlive(env) {
   }
 }
 
+export { app }
+
 export default {
   fetch: app.fetch,
   scheduled(event, env, ctx) {

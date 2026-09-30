@@ -4,67 +4,73 @@ import { unwrap, forbidden } from '../lib/errors.js'
 import { parseJson, parseQuery, documentPatch, documentListQuery } from '../lib/validate.js'
 import { applyCursor, pageResult } from '../lib/pagination.js'
 import { activityFor } from '../lib/activity.js'
-import { DOC_FIELDS, loadDocument, loadVersions, loadFiles, attachCurrentFiles, assertCanView, publicFile } from '../lib/docs.js'
+import {
+  DOC_FIELDS, loadDocument, loadVersions, loadFiles, attachSummaries, assertCanView, publicFile,
+  personDocumentIds, groupDocumentIds, setDocumentLinks,
+} from '../lib/docs.js'
 
 const documents = new Hono()
 
-function baseListQuery(db, m) {
+/** Base query with the visibility rules from lib/docs.js applied. Returns null when nothing can match. */
+async function scopedQuery(db, m) {
   let q = db.from('documents').select(DOC_FIELDS).eq('workspace_id', m.workspace_id)
-  // Visibility (see lib/docs.js assertCanView for the rules)
-  if (m.rank < 30) {
-    if (m.role_key === 'restricted') {
-      q = m.person_id ? q.or(`created_by.eq.${m.user_id},person_id.eq.${m.person_id}`) : q.eq('created_by', m.user_id)
-    } else {
-      q = q.or(`visibility.neq.private,created_by.eq.${m.user_id}`)
-    }
+  if (m.rank >= 30) return q
+  if (m.role_key === 'restricted') {
+    const linked = m.person_id ? await personDocumentIds(db, m.workspace_id, m.person_id) : []
+    return linked.length ? q.or(`created_by.eq.${m.user_id},id.in.(${linked.join(',')})`) : q.eq('created_by', m.user_id)
   }
-  return q
+  return q.or(`visibility.neq.private,created_by.eq.${m.user_id}`)
 }
 
-// GET /documents?q=&person_id=&sort=&order=&limit=&cursor=
-documents.get('/', async (c) => {
+async function listPage(c, { deleted }) {
   const db = c.get('db')
   const m = c.get('membership')
   const q = parseQuery(c, documentListQuery)
-  let query = baseListQuery(db, m).is('deleted_at', null)
-  if (q.q) query = query.ilike('title', `%${q.q.replace(/[%_]/g, '')}%`)
-  if (q.person_id) query = query.eq('person_id', q.person_id)
+  let query = await scopedQuery(db, m)
+  query = deleted ? query.not('deleted_at', 'is', null) : query.is('deleted_at', null)
+  if (q.q) query = query.ilike('name', `%${q.q.replace(/[%_,]/g, '')}%`)
+  if (q.document_type) query = query.eq('document_type', q.document_type)
+  if (q.favorite) query = query.eq('is_favorite', true)
+  if (q.person_id) {
+    const ids = await personDocumentIds(db, m.workspace_id, q.person_id)
+    if (!ids.length) return { documents: [], next_cursor: null }
+    query = query.in('id', ids)
+  }
+  if (q.group_id) {
+    const ids = await groupDocumentIds(db, m.workspace_id, q.group_id)
+    if (!ids.length) return { documents: [], next_cursor: null }
+    query = query.in('id', ids)
+  }
 
-  let rows
   let page
-  if (q.sort === 'created_at') {
-    rows = unwrap(await applyCursor(query, q.cursor, q.limit), 'List documents')
+  if (q.sort === 'created_at' && q.order === 'desc') {
+    const rows = unwrap(await applyCursor(query, q.cursor, q.limit), 'List documents')
     page = pageResult(rows, q.limit)
   } else {
-    // Non-default sorts use offset paging via the cursor as a plain number.
+    // Other sorts use offset paging; the cursor is the numeric offset.
     const offset = q.cursor ? Math.max(0, parseInt(q.cursor, 10) || 0) : 0
-    rows = unwrap(await query.order(q.sort, { ascending: q.order === 'asc' }).order('id').range(offset, offset + q.limit), 'List documents')
+    const rows = unwrap(await query.order(q.sort, { ascending: q.order === 'asc', nullsFirst: false }).order('id').range(offset, offset + q.limit), 'List documents')
     const hasMore = rows.length > q.limit
     page = { items: hasMore ? rows.slice(0, q.limit) : rows, next_cursor: hasMore ? String(offset + q.limit) : null }
   }
-  await attachCurrentFiles(db, m.workspace_id, page.items)
-  return c.json({ documents: page.items, next_cursor: page.next_cursor })
-})
+  await attachSummaries(db, m.workspace_id, page.items)
+  return { documents: page.items, next_cursor: page.next_cursor }
+}
+
+// GET /documents?q=&person_id=&group_id=&document_type=&favorite=1&sort=&order=&limit=&cursor=
+documents.get('/', async (c) => c.json(await listPage(c, { deleted: false })))
 
 // GET /documents/trash (editor+)
-documents.get('/trash', requireRole('editor'), async (c) => {
-  const db = c.get('db')
-  const m = c.get('membership')
-  const q = parseQuery(c, documentListQuery)
-  const query = baseListQuery(db, m).not('deleted_at', 'is', null)
-  const rows = unwrap(await applyCursor(query, q.cursor, q.limit), 'List trash')
-  const page = pageResult(rows, q.limit)
-  await attachCurrentFiles(db, m.workspace_id, page.items)
-  return c.json({ documents: page.items, next_cursor: page.next_cursor })
-})
+documents.get('/trash', requireRole('editor'), async (c) => c.json(await listPage(c, { deleted: true })))
 
 // GET /documents/:id
 documents.get('/:id', async (c) => {
   const db = c.get('db')
   const m = c.get('membership')
   const doc = await loadDocument(db, m.workspace_id, c.req.param('id'), { includeDeleted: true })
-  assertCanView(m, doc)
+  await assertCanView(db, m, doc)
   const [versions, files] = await Promise.all([loadVersions(db, m.workspace_id, doc.id), loadFiles(db, m.workspace_id, [doc.id])])
+  await attachSummaries(db, m.workspace_id, [doc])
   return c.json({ document: { ...doc, versions, files: files.map(publicFile) } })
 })
 
@@ -73,13 +79,21 @@ documents.patch('/:id', requireRole('editor'), async (c) => {
   const db = c.get('db')
   const m = c.get('membership')
   const existing = await loadDocument(db, m.workspace_id, c.req.param('id'))
-  const patch = await parseJson(c, documentPatch)
+  const { person_ids, group_ids, ...patch } = await parseJson(c, documentPatch)
+
+  const update = { ...patch, updated_at: new Date().toISOString() }
+  if (patch.name && patch.name !== existing.name) {
+    // keep a rename trail (previous_names text[])
+    const prev = unwrap(await db.from('documents').select('previous_names').eq('id', existing.id).single(), 'Load previous names')
+    update.previous_names = [...new Set([...(prev.previous_names || []), existing.name])].slice(-20)
+  }
   const document = unwrap(
-    await db.from('documents').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', existing.id).eq('workspace_id', m.workspace_id).select(DOC_FIELDS).single(),
+    await db.from('documents').update(update).eq('id', existing.id).eq('workspace_id', m.workspace_id).select(DOC_FIELDS).single(),
     'Update document',
   )
-  await activityFor(c)('document.updated', 'document', document.id, { fields: Object.keys(patch) })
-  await attachCurrentFiles(db, m.workspace_id, [document])
+  await setDocumentLinks(db, m.workspace_id, document.id, { personIds: person_ids, groupIds: group_ids }, c.get('user').id)
+  await activityFor(c)('details_edited', 'document', document.id, { fields: Object.keys(patch) }, `updated "${document.name}"`)
+  await attachSummaries(db, m.workspace_id, [document])
   return c.json({ document })
 })
 
@@ -94,7 +108,7 @@ documents.delete('/:id', requireRole('editor'), async (c) => {
     await db.from('documents').update({ deleted_at: new Date().toISOString(), deleted_by: user.id, updated_at: new Date().toISOString() }).eq('id', doc.id).eq('workspace_id', m.workspace_id),
     'Delete document',
   )
-  await activityFor(c)('document.deleted', 'document', doc.id, { title: doc.title })
+  await activityFor(c)('deleted', 'document', doc.id, { name: doc.name }, `moved "${doc.name}" to trash`)
   return c.json({ ok: true })
 })
 
@@ -107,8 +121,8 @@ documents.post('/:id/restore', requireRole('editor'), async (c) => {
     await db.from('documents').update({ deleted_at: null, deleted_by: null, updated_at: new Date().toISOString() }).eq('id', doc.id).eq('workspace_id', m.workspace_id).select(DOC_FIELDS).single(),
     'Restore document',
   )
-  await activityFor(c)('document.restored', 'document', doc.id, { title: doc.title })
-  await attachCurrentFiles(db, m.workspace_id, [document])
+  await activityFor(c)('restored', 'document', doc.id, { name: doc.name }, `restored "${doc.name}"`)
+  await attachSummaries(db, m.workspace_id, [document])
   return c.json({ document })
 })
 
@@ -120,10 +134,9 @@ documents.delete('/:id/purge', requireRole('admin'), async (c) => {
   if (!doc.deleted_at) throw forbidden('Move the document to trash before purging it')
   const files = await loadFiles(db, m.workspace_id, [doc.id])
   if (files.length) await c.env.DOCUMENTS_BUCKET.delete(files.map((f) => f.r2_object_key))
-  unwrap(await db.from('document_files').delete().eq('workspace_id', m.workspace_id).eq('document_id', doc.id), 'Purge files')
-  unwrap(await db.from('document_versions').delete().eq('workspace_id', m.workspace_id).eq('document_id', doc.id), 'Purge versions')
+  // documents FK cascades to versions/files/pages/links
   unwrap(await db.from('documents').delete().eq('workspace_id', m.workspace_id).eq('id', doc.id), 'Purge document')
-  await activityFor(c)('document.purged', 'document', doc.id, { title: doc.title, files: files.length })
+  await activityFor(c)('purged', 'document', doc.id, { name: doc.name, files: files.length }, `permanently deleted "${doc.name}"`)
   return c.json({ ok: true })
 })
 

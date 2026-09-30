@@ -1,11 +1,18 @@
 /**
- * Writes a row to activity_logs. Never throws: an audit-log failure must not
- * break the user's action, so errors are only logged.
+ * Writes a row to activity_logs (workspace_id, actor_id, entity_type, entity_id, action, message, metadata).
+ * Never throws: an audit-log failure must not break the user's action.
  *
- * @param {object} db supabase client
- * @param {object} entry { workspaceId, actorId, action, entityType, entityId, details }
+ * activity_logs.workspace_id is NOT NULL, so user-level events (Chaabi vault)
+ * are only written to the Worker log until a user-level audit table exists.
  */
-export async function logActivity(db, { workspaceId = null, actorId = null, action, entityType, entityId = null, details = {} }) {
+const humanize = (action) => action.replace(/[._]/g, ' ')
+
+export async function logActivity(db, { workspaceId = null, actorId = null, action, entityType, entityId = null, message, details = {} }) {
+  const text = message || humanize(action)
+  if (!workspaceId) {
+    console.log(`[activity:user] ${actorId ?? '-'} ${entityType}:${entityId ?? '-'} ${action} ${JSON.stringify(details)}`)
+    return
+  }
   try {
     const { error } = await db.from('activity_logs').insert({
       workspace_id: workspaceId,
@@ -13,7 +20,8 @@ export async function logActivity(db, { workspaceId = null, actorId = null, acti
       action,
       entity_type: entityType,
       entity_id: entityId,
-      details,
+      message: text,
+      metadata: details ?? {},
     })
     if (error) console.warn('[activity] insert failed:', error.message)
   } catch (err) {
@@ -26,7 +34,7 @@ export function activityFor(c) {
   const db = c.get('db')
   const user = c.get('user')
   const membership = c.get('membership')
-  return (action, entityType, entityId, details) =>
+  return (action, entityType, entityId, details, message) =>
     logActivity(db, {
       workspaceId: membership?.workspace_id ?? null,
       actorId: user?.id ?? null,
@@ -34,5 +42,6 @@ export function activityFor(c) {
       entityType,
       entityId,
       details,
+      message,
     })
 }

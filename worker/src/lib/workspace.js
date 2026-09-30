@@ -18,24 +18,29 @@ export function requireWorkspace(minRole) {
     const db = c.get('db')
 
     const workspace = unwrap(
-      await db.from('workspaces').select('id, name, kind, icon, default_visibility, settings, created_by, deleted_at').eq('id', wsId).maybeSingle(),
+      await db.from('workspaces').select('id, name, kind, icon, default_visibility, features, storage_bytes, owner_id, created_by, deleted_at').eq('id', wsId).maybeSingle(),
       'Load workspace',
     )
     if (!workspace || workspace.deleted_at) throw notFound('Workspace not found')
 
     const membership = unwrap(
-      await db
-        .from('workspace_members')
-        .select('id, workspace_id, user_id, role_key, person_id, joined_at')
-        .eq('workspace_id', wsId)
-        .eq('user_id', user.id)
-        .maybeSingle(),
+      await db.from('workspace_members').select('id, workspace_id, user_id, role_key, joined_at').eq('workspace_id', wsId).eq('user_id', user.id).maybeSingle(),
       'Load membership',
     )
     if (!membership) throw forbidden('You are not a member of this workspace')
     if (minRole && !hasRole(membership.role_key, minRole)) throw forbidden(`Requires ${minRole} role or higher`)
 
-    c.set('membership', { ...membership, rank: rankOf(membership.role_key), workspace })
+    // The member <-> person link lives on people.user_id. Only restricted members need it for visibility checks.
+    let personId = null
+    if (membership.role_key === 'restricted') {
+      const person = unwrap(
+        await db.from('people').select('id').eq('workspace_id', wsId).eq('user_id', user.id).is('deleted_at', null).maybeSingle(),
+        'Load linked person',
+      )
+      personId = person?.id ?? null
+    }
+
+    c.set('membership', { ...membership, person_id: personId, rank: rankOf(membership.role_key), workspace })
     await next()
   }
 }

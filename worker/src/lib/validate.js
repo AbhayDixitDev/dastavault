@@ -196,6 +196,7 @@ const kdfFields = {
   kdf_iterations: z.number().int().min(100_000).max(5_000_000).default(600_000),
   pin_wrapped_key: base64(1024),
   wrap_iv: base64(64),
+  pin_length: z.number().int().min(4).max(6).optional(),
 }
 
 export const vaultSetup = z.object({
@@ -224,6 +225,8 @@ export const vaultItemCreate = z.object({
   website: optionalText(500),
   category: z.enum(['personal', 'banking', 'work', 'social', 'wifi', 'cards', 'other']).default('other'),
   is_favorite: z.boolean().default(false),
+  tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  strength: z.number().int().min(0).max(4).nullable().optional(),
   encrypted_blob: base64(64 * 1024),
   iv: base64(64),
 })

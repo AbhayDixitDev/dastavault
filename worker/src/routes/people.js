@@ -8,12 +8,12 @@ import { isUuid } from '../lib/ids.js'
 const people = new Hono()
 const PERSON_FIELDS =
   'id, workspace_id, display_name, first_name, last_name, relation_label, email, phone, date_of_birth, avatar_key, user_id, notes, custom, created_by, created_at, updated_at, deleted_at'
-const REL_FIELDS = 'id, workspace_id, from_person_id, to_person_id, relation, custom_label, created_at'
+const REL_FIELDS = 'id, workspace_id, from_person_id, to_person_id, relation, custom_label, created_by, created_at'
 
 /**
  * Inverse relations stored automatically when unambiguous.
  * "A is <relation> of B" (from=A,to=B) implies "B is <inverse> of A".
- * brother/sister/sibling/custom have no stored inverse (gender of A unknown).
+ * brother/sister/guardian/custom have no stored inverse (no unambiguous value in the relation check list).
  */
 const INVERSE = Object.freeze({
   father: 'child',
@@ -25,8 +25,6 @@ const INVERSE = Object.freeze({
   spouse: 'spouse',
   grandparent: 'grandchild',
   grandchild: 'grandparent',
-  guardian: 'ward',
-  ward: 'guardian',
   manager: 'reports_to',
   reports_to: 'manager',
 })
@@ -84,7 +82,7 @@ async function assertUserLinkFree(db, wsId, userId, selfPersonId) {
   if (other) throw conflict(`This member is already linked to "${other.display_name}"`)
 }
 
-async function setGroups(db, wsId, personId, groupIds) {
+async function setGroups(db, wsId, personId, groupIds, actorId) {
   const ids = [...new Set(groupIds)]
   if (ids.length) {
     const found = unwrap(await db.from('groups').select('id').eq('workspace_id', wsId).in('id', ids), 'Verify groups')
@@ -92,7 +90,7 @@ async function setGroups(db, wsId, personId, groupIds) {
   }
   unwrap(await db.from('person_groups').delete().eq('workspace_id', wsId).eq('person_id', personId), 'Clear person groups')
   if (ids.length) {
-    unwrap(await db.from('person_groups').insert(ids.map((group_id) => ({ person_id: personId, group_id, workspace_id: wsId }))), 'Link groups')
+    unwrap(await db.from('person_groups').insert(ids.map((group_id) => ({ person_id: personId, group_id, workspace_id: wsId, created_by: actorId }))), 'Link groups')
   }
 }
 
@@ -126,7 +124,7 @@ people.post('/', requireRole('editor'), async (c) => {
     await db.from('people').insert({ ...body, workspace_id: m.workspace_id, created_by: c.get('user').id }).select(PERSON_FIELDS).single(),
     'Create person',
   )
-  if (group_ids?.length) await setGroups(db, m.workspace_id, person.id, group_ids)
+  if (group_ids?.length) await setGroups(db, m.workspace_id, person.id, group_ids, c.get('user').id)
   await activityFor(c)('person.created', 'person', person.id, { display_name: person.display_name })
   const groupsMap = await loadGroupsFor(db, m.workspace_id, [person.id])
   return c.json({ person: { ...person, groups: groupsMap.get(person.id) || [] } }, 201)
@@ -152,7 +150,7 @@ people.patch('/:pid', requireRole('editor'), async (c) => {
     await db.from('people').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', existing.id).eq('workspace_id', m.workspace_id).select(PERSON_FIELDS).single(),
     'Update person',
   )
-  if (group_ids) await setGroups(db, m.workspace_id, person.id, group_ids)
+  if (group_ids) await setGroups(db, m.workspace_id, person.id, group_ids, c.get('user').id)
   await activityFor(c)('person.updated', 'person', person.id, { fields: Object.keys(patch) })
   const groupsMap = await loadGroupsFor(db, m.workspace_id, [person.id])
   return c.json({ person: { ...person, groups: groupsMap.get(person.id) || [] } })
@@ -210,7 +208,7 @@ people.post('/:pid/relationships', requireRole('editor'), async (c) => {
   const relationship = unwrap(
     await db
       .from('person_relationships')
-      .insert({ workspace_id: m.workspace_id, from_person_id: from.id, to_person_id: to.id, relation: body.relation, custom_label: body.custom_label ?? null })
+      .insert({ workspace_id: m.workspace_id, from_person_id: from.id, to_person_id: to.id, relation: body.relation, custom_label: body.custom_label ?? null, created_by: c.get('user').id })
       .select(REL_FIELDS)
       .single(),
     'Create relationship',
@@ -218,13 +216,13 @@ people.post('/:pid/relationships', requireRole('editor'), async (c) => {
 
   const inverse = INVERSE[body.relation]
   if (inverse) {
-    const invDup = unwrap(
-      await db.from('person_relationships').select('id').eq('workspace_id', m.workspace_id).eq('from_person_id', to.id).eq('to_person_id', from.id).eq('relation', inverse).maybeSingle(),
-      'Check inverse',
-    )
-    if (!invDup) {
-      await db.from('person_relationships').insert({ workspace_id: m.workspace_id, from_person_id: to.id, to_person_id: from.id, relation: inverse, custom_label: null })
-    }
+    // unique (from_person_id, to_person_id, relation) makes a duplicate inverse a harmless no-op
+    await db
+      .from('person_relationships')
+      .upsert(
+        { workspace_id: m.workspace_id, from_person_id: to.id, to_person_id: from.id, relation: inverse, custom_label: null, created_by: c.get('user').id },
+        { onConflict: 'from_person_id,to_person_id,relation', ignoreDuplicates: true },
+      )
   }
 
   await activityFor(c)('relationship.created', 'person', from.id, { to_person_id: to.id, relation: body.relation, inverse: inverse || null })
@@ -265,7 +263,10 @@ people.post('/:pid/groups', requireRole('editor'), async (c) => {
   unwrap(
     await db
       .from('person_groups')
-      .upsert({ person_id: person.id, group_id: group.id, workspace_id: m.workspace_id, role_in_group: body.role_in_group ?? null }, { onConflict: 'person_id,group_id' }),
+      .upsert(
+        { person_id: person.id, group_id: group.id, workspace_id: m.workspace_id, role_in_group: body.role_in_group ?? null, created_by: c.get('user').id },
+        { onConflict: 'person_id,group_id' },
+      ),
     'Link person to group',
   )
   await activityFor(c)('person.group_added', 'person', person.id, { group_id: group.id, group_name: group.name })

@@ -19,7 +19,7 @@ fileUrlRoutes.get('/files/:fileId/url', async (c) => {
   const file = unwrap(await db.from('document_files').select(FILE_FIELDS).eq('workspace_id', m.workspace_id).eq('id', fileId).maybeSingle(), 'Load file')
   if (!file) throw notFound('File not found')
   const doc = await loadDocument(db, m.workspace_id, file.document_id, { includeDeleted: true })
-  assertCanView(m, doc)
+  await assertCanView(db, m, doc)
 
   const origin = new URL(c.req.url).origin
   const signed = await signFileUrl(c.env, origin, file.id, { download: c.req.query('download') === '1' })

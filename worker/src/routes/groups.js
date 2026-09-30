@@ -6,7 +6,7 @@ import { activityFor } from '../lib/activity.js'
 import { isUuid } from '../lib/ids.js'
 
 const groups = new Hono()
-const GROUP_FIELDS = 'id, workspace_id, parent_group_id, name, description, color, created_by, created_at, updated_at'
+const GROUP_FIELDS = 'id, workspace_id, parent_group_id, name, description, icon, color, position, created_by, created_at, updated_at'
 
 async function loadGroup(db, wsId, groupId) {
   if (!isUuid(groupId)) throw badRequest('Invalid group id')
@@ -39,7 +39,7 @@ async function assertParent(db, wsId, parentId, selfId) {
 groups.get('/', async (c) => {
   const db = c.get('db')
   const m = c.get('membership')
-  const rows = unwrap(await db.from('groups').select(GROUP_FIELDS).eq('workspace_id', m.workspace_id).order('name', { ascending: true }), 'List groups')
+  const rows = unwrap(await db.from('groups').select(GROUP_FIELDS).eq('workspace_id', m.workspace_id).order('position', { ascending: true }).order('name', { ascending: true }), 'List groups')
   const counts = await memberCounts(db, m.workspace_id, rows.map((g) => g.id))
   const byId = new Map(rows.map((g) => [g.id, g]))
   const list = rows.map((g) => ({
