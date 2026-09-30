@@ -88,22 +88,24 @@ The product is built phase by phase. Each phase is usable on its own.
 | Phase | Scope | Status |
 |-------|-------|--------|
 | 1 | App shell, routing, theme, Supabase Auth (email, magic link, Google), workspaces, terminology, members, groups, people, relationships, roles | Done |
-| 2 | R2 upload, document records, list, viewer, details, trash | API done (Worker); UI next |
-| 3 | Mobile scanner, OpenCV crop, manual and perspective crop, compression, OCR | Planned |
-| 4 | Smart details, smart names, tags, people and group links, duplicate detection | Planned |
-| 5 | Full-text search, fuzzy matching, filters | Planned |
-| 6 | pgvector, local embeddings, hybrid search with Reciprocal Rank Fusion | Planned |
-| 7 | Versions, timeline, reminders, albums | Planned |
-| 8 | Ask your documents (RAG), voice search, image search, smart albums, optional face grouping | Planned |
-| 9 | Chaabi password keeper, Notes and in-app writing | Chaabi API done (Worker); UI next |
+| 2 | R2 upload, document records, list, viewer, details, trash | Done |
+| 3 | Mobile scanner, OpenCV crop, manual and perspective crop, compression, OCR | Done |
+| 4 | Smart details, smart names, tags, people and group links, duplicate detection | Done |
+| 5 | Full-text search, fuzzy matching, filters | Done |
+| 6 | pgvector, local embeddings, hybrid search with Reciprocal Rank Fusion | Done |
+| 7 | Versions, timeline, reminders, albums, sharing | Done |
+| 8 | Ask your documents (RAG), voice search, image search, smart albums | Done (face grouping deferred) |
+| 9 | Chaabi password keeper, Notes, in-app writing and document editing | Done |
 
 ## Status of the running pieces
 
 | Piece | State |
 |-------|-------|
-| `backend/migrations` | 10 SQL files, run in order in the Supabase SQL editor |
-| `worker/` | 100 routes; Phase 1 + documents/uploads/files + Chaabi vault implemented, the rest return 501 with permission checks in place |
-| `frontend/` | Phase 1 screens complete; later phases show a friendly "coming in Phase N" page |
+| `backend/migrations` | 11 SQL files, run in order in the Supabase SQL editor |
+| `worker/` | About 200 routes covering every module; verified end to end against a live Supabase project |
+| `frontend/` | All screens built; heavy pages are code-split; OpenCV, Tesseract and the embedding model load on demand |
+
+See [docs/API_CONTRACT.md](docs/API_CONTRACT.md) for every route and response shape.
 
 See [docs/PRD.md](docs/PRD.md) for the complete requirements and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the technical design.
 

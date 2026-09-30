@@ -60,7 +60,7 @@ export function PinPad({ value = '', onChange, maxLength = 6, minLength = 4, dis
     <div className={cn('mx-auto grid w-full max-w-xs grid-cols-3 gap-3', className)} role="group" aria-label="PIN keypad">
       {KEYS.map((k, i) =>
         k === '' ? (
-          <span key={i} />
+          <span key={`blank-${i}`} />
         ) : (
           <button
             key={k}
