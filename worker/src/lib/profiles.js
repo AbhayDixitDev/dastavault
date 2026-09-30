@@ -1,6 +1,6 @@
 import { unwrap } from './errors.js'
 
-export const PUBLIC_PROFILE_FIELDS = 'id, email, display_name, avatar_url'
+export const PUBLIC_PROFILE_FIELDS = 'id, email, display_name, avatar_key'
 
 /**
  * Loads public profile fields for a set of user ids. Done as a separate query
@@ -19,7 +19,7 @@ export async function attachProfiles(db, rows, key = 'user_id', target = 'profil
   const map = await loadProfiles(db, rows.map((r) => r[key]))
   for (const r of rows) {
     const p = map.get(r[key])
-    r[target] = p ? { display_name: p.display_name, email: p.email, avatar_url: p.avatar_url, id: p.id } : null
+    r[target] = p ? { display_name: p.display_name, email: p.email, avatar_key: p.avatar_key, id: p.id } : null
   }
   return rows
 }
