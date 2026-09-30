@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { useCreatePersonMutation, useUpdatePersonMutation } from '@/store/api/peopleApi'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { RELATION_LABELS_FOR_PERSON } from '@/constants/relations'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -58,12 +58,13 @@ export function PersonDialog({ open, onOpenChange, person, onSaved }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92svh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{person ? `Edit ${t.person_label.toLowerCase()}` : `Add ${t.person_label.toLowerCase()}`}</DialogTitle>
           <DialogDescription>Documents can belong to this {t.person_label.toLowerCase()}.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col gap-4">
+          <DialogBody className="flex flex-col gap-4 py-1">
           <div className="grid gap-2">
             <Label htmlFor="display_name">Name</Label>
             <Input id="display_name" autoFocus {...register('display_name')} />
@@ -108,6 +109,7 @@ export function PersonDialog({ open, onOpenChange, person, onSaved }) {
             <Label htmlFor="notes">Notes (optional)</Label>
             <Textarea id="notes" rows={2} {...register('notes')} />
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={busy}>{busy && <Spinner />} {person ? 'Save' : 'Add'}</Button>

@@ -18,9 +18,10 @@ import { AccountPage } from '@/pages/Account/AccountPage'
 import { InviteAcceptPage } from '@/pages/Invite/InviteAcceptPage'
 import { ComingSoonPage } from '@/pages/ComingSoon/ComingSoonPage'
 import { NotFoundPage } from '@/pages/NotFound/NotFoundPage'
+import { RouteErrorPage } from '@/components/common/ErrorPage'
 
 export const router = createBrowserRouter([
-  { path: '/', element: <LandingPage /> },
+  { path: '/', element: <LandingPage />, errorElement: <RouteErrorPage /> },
   { path: '/login', element: <LoginPage /> },
   { path: '/signup', element: <SignupPage /> },
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
   { path: '/verify', element: <VerifyPage /> },
   {
     element: <ProtectedRoute />,
+    errorElement: <RouteErrorPage />,
     children: [
       { path: '/onboarding', element: <OnboardingPage /> },
       { path: '/w', element: <WorkspaceSwitcherPage /> },
@@ -36,6 +38,7 @@ export const router = createBrowserRouter([
       {
         path: '/w/:ws',
         element: <AppShell />,
+        errorElement: <RouteErrorPage />,
         children: [
           { index: true, element: <HomePage /> },
           { path: 'search', element: <ComingSoonPage feature="search" /> },

@@ -12,7 +12,12 @@ const PROFILE_FIELDS = 'id, email, display_name, avatar_key, preferred_language,
 export async function ensureProfile(db, user) {
   const existing = unwrap(await db.from('profiles').select(PROFILE_FIELDS).eq('id', user.id).maybeSingle(), 'Load profile')
   if (existing) return existing
-  const displayName = user.email ? user.email.split('@')[0] : 'New user'
+  const m = user.metadata || {}
+  const displayName =
+    (typeof m.display_name === 'string' && m.display_name.trim()) ||
+    (typeof m.full_name === 'string' && m.full_name.trim()) ||
+    (typeof m.name === 'string' && m.name.trim()) ||
+    (user.email ? user.email.split('@')[0] : 'New user')
   return unwrap(
     await db
       .from('profiles')

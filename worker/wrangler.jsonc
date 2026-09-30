@@ -21,7 +21,7 @@
 
   // Non-secret configuration. Secrets live in .dev.vars (local) and `wrangler secret put` (prod).
   "vars": {
-    "ALLOWED_ORIGINS": "http://localhost:5173",
+    "ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
     "APP_URL": "http://localhost:5173"
   },
 

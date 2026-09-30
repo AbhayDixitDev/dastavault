@@ -22,6 +22,13 @@ export function initials(name = '') {
     .join('')
 }
 
+/** Best human name for a signed-in user: profile name, then OAuth full name, then email prefix. */
+export function displayNameOf(user, profile) {
+  const m = user?.metadata ?? {}
+  const candidates = [profile?.display_name, m.display_name, m.full_name, m.name, user?.email?.split('@')[0]]
+  return candidates.find((v) => typeof v === 'string' && v.trim())?.trim() || ''
+}
+
 export function formatBytes(bytes = 0) {
   if (bytes < 1024) return `${bytes} B`
   const units = ['KB', 'MB', 'GB']

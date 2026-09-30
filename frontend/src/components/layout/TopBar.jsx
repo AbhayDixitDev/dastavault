@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { initials } from '@/utils/format'
+import { initials, displayNameOf } from '@/utils/format'
 
 export function TopBar() {
   const isDesktop = useIsDesktop()
@@ -61,7 +61,7 @@ export function TopBar() {
           <DropdownMenuTrigger asChild>
             <button type="button" className="rounded-full outline-none ring-ring/50 focus-visible:ring-2">
               <Avatar className="size-9">
-                <AvatarFallback>{initials(user?.metadata?.display_name || user?.email || '?')}</AvatarFallback>
+                <AvatarFallback>{initials(displayNameOf(user) || '?')}</AvatarFallback>
               </Avatar>
             </button>
           </DropdownMenuTrigger>

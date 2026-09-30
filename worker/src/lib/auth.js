@@ -72,6 +72,8 @@ export function requireAuth() {
       id: payload.sub,
       email: typeof payload.email === 'string' ? payload.email.toLowerCase() : null,
       role: payload.role || 'authenticated',
+      // Google/OAuth sign-ins carry the real name here (full_name / name).
+      metadata: payload.user_metadata && typeof payload.user_metadata === 'object' ? payload.user_metadata : {},
     })
     await next()
   }

@@ -7,7 +7,7 @@ import { useGetGroupsQuery } from '@/store/api/groupsApi'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { initials } from '@/utils/format'
+import { initials, displayNameOf } from '@/utils/format'
 import { useIsDesktop } from '@/hooks/useMediaQuery'
 
 function Tile({ to, icon: Icon, label, primary }) {
@@ -48,7 +48,7 @@ export function HomePage() {
   const isDesktop = useIsDesktop()
   const { data: people = [] } = useGetPeopleQuery(workspaceId)
   const { data: groups = [] } = useGetGroupsQuery(workspaceId)
-  const firstName = (user?.metadata?.display_name || user?.email || '').split(/[\s@]/)[0]
+  const firstName = displayNameOf(user).split(/\s+/)[0]
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-5">
