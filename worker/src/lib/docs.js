@@ -28,11 +28,17 @@ export async function loadDocument(db, wsId, docId, { includeDeleted = false } =
  * caller's membership. Used by every list-like route (documents, search,
  * albums, home) so the gate lives in SQL.
  */
-export async function scopedDocumentsQuery(db, m, select = DOC_FIELDS) {
+/**
+ * Base documents query limited to what this member may see.
+ * Synchronous on purpose: PostgREST builders are thenables, so returning one
+ * from an async function would execute the query early. The restricted-role
+ * linked document ids are precomputed by requireWorkspace() (m.linked_document_ids).
+ */
+export function scopedDocumentsQuery(db, m, select = DOC_FIELDS) {
   const q = db.from('documents').select(select).eq('workspace_id', m.workspace_id)
   if (m.rank >= 30) return q
   if (m.role_key === 'restricted') {
-    const linked = m.person_id ? await personDocumentIds(db, m.workspace_id, m.person_id) : []
+    const linked = m.linked_document_ids ?? []
     return linked.length ? q.or(`created_by.eq.${m.user_id},id.in.(${linked.join(',')})`) : q.eq('created_by', m.user_id)
   }
   return q.or(`visibility.neq.private,created_by.eq.${m.user_id}`)

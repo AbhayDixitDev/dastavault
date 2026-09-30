@@ -32,15 +32,29 @@ export function requireWorkspace(minRole) {
 
     // The member <-> person link lives on people.user_id. Only restricted members need it for visibility checks.
     let personId = null
+    let linkedDocumentIds = []
     if (membership.role_key === 'restricted') {
       const person = unwrap(
         await db.from('people').select('id').eq('workspace_id', wsId).eq('user_id', user.id).is('deleted_at', null).maybeSingle(),
         'Load linked person',
       )
       personId = person?.id ?? null
+      if (personId) {
+        const rows = unwrap(
+          await db.from('document_people').select('document_id').eq('workspace_id', wsId).eq('person_id', personId),
+          'Load linked documents',
+        )
+        linkedDocumentIds = rows.map((r) => r.document_id)
+      }
     }
 
-    c.set('membership', { ...membership, person_id: personId, rank: rankOf(membership.role_key), workspace })
+    c.set('membership', {
+      ...membership,
+      person_id: personId,
+      linked_document_ids: linkedDocumentIds,
+      rank: rankOf(membership.role_key),
+      workspace,
+    })
     await next()
   }
 }

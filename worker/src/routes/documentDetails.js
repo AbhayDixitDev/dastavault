@@ -153,7 +153,7 @@ details.post('/check-duplicates', async (c) => {
   }
 
   if (!best.size) return c.json({ matches: [] })
-  const q = await scopedDocumentsQuery(db, m)
+  const q = scopedDocumentsQuery(db, m)
   const docs = unwrap(await q.is('deleted_at', null).in('id', [...best.keys()]).limit(50), 'Load matches')
   await attachSummaries(db, m.workspace_id, docs)
   const matches = docs

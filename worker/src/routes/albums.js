@@ -54,7 +54,7 @@ const asList = (v) => (Array.isArray(v) ? v.map(String) : v === null || v === un
 
 /** Builds the documents query for a smart album. Returns null when nothing can match. */
 export async function smartAlbumQuery(db, m, album) {
-  let query = await scopedDocumentsQuery(db, m)
+  let query = scopedDocumentsQuery(db, m)
   query = query.is('deleted_at', null)
   for (const rule of effectiveRules(album)) {
     const values = asList(rule.value)
@@ -62,14 +62,14 @@ export async function smartAlbumQuery(db, m, album) {
       case 'person_id': {
         const ids = new Set()
         for (const pid of values.filter(isUuid)) for (const id of await personDocumentIds(db, m.workspace_id, pid)) ids.add(id)
-        if (!ids.size) return null
+        if (!ids.size) return { query: null }
         query = query.in('id', [...ids])
         break
       }
       case 'group_id': {
         const ids = new Set()
         for (const gid of values.filter(isUuid)) for (const id of await groupDocumentIds(db, m.workspace_id, gid)) ids.add(id)
-        if (!ids.size) return null
+        if (!ids.size) return { query: null }
         query = query.in('id', [...ids])
         break
       }
@@ -80,12 +80,12 @@ export async function smartAlbumQuery(db, m, album) {
         if (uuids.length && names.length) tq = tq.or(`id.in.(${uuids.join(',')}),name.in.(${names.map((n) => `"${esc(n)}"`).join(',')})`)
         else if (uuids.length) tq = tq.in('id', uuids)
         else if (names.length) tq = tq.in('name', names)
-        else return null
+        else return { query: null }
         const tagIds = unwrap(await tq, 'Find tags').map((t) => t.id)
-        if (!tagIds.length) return null
+        if (!tagIds.length) return { query: null }
         const rows = unwrap(await db.from('document_tags').select('document_id').eq('workspace_id', m.workspace_id).in('tag_id', tagIds), 'Filter by tags')
         const ids = [...new Set(rows.map((r) => r.document_id))]
-        if (!ids.length) return null
+        if (!ids.length) return { query: null }
         query = query.in('id', ids)
         break
       }
@@ -117,7 +117,7 @@ export async function smartAlbumQuery(db, m, album) {
         break
     }
   }
-  return query
+  return { query }
 }
 
 async function itemCounts(db, m, rows) {
@@ -132,7 +132,7 @@ async function itemCounts(db, m, rows) {
     rows
       .filter((a) => a.kind !== 'manual')
       .map(async (a) => {
-        const q = await smartAlbumQuery(db, m, a)
+        const q = (await smartAlbumQuery(db, m, a)).query
         if (!q) return counts.set(a.id, 0)
         const countRes = await q.select('id', { count: 'exact', head: true })
         counts.set(a.id, countRes.error ? 0 : countRes.count ?? 0)
@@ -180,7 +180,7 @@ albums.get('/:aid', async (c) => {
     const page = pageResult(items, q.limit)
     nextCursor = page.next_cursor
     if (page.items.length) {
-      const base = await scopedDocumentsQuery(db, m)
+      const base = scopedDocumentsQuery(db, m)
       const docs = unwrap(await base.is('deleted_at', null).in('id', page.items.map((i) => i.document_id)), 'Load album documents')
       const byId = new Map(docs.map((d) => [d.id, d]))
       documents = page.items.map((i) => byId.get(i.document_id)).filter(Boolean)
@@ -188,13 +188,13 @@ albums.get('/:aid', async (c) => {
     const countRes = await db.from('album_items').select('id', { count: 'exact', head: true }).eq('album_id', album.id)
     total = countRes.count ?? documents.length
   } else {
-    const query = await smartAlbumQuery(db, m, album)
+    const query = (await smartAlbumQuery(db, m, album)).query
     if (query) {
       const rows = unwrap(await applyCursor(query, q.cursor, q.limit), 'Evaluate smart album')
       const page = pageResult(rows, q.limit)
       documents = page.items
       nextCursor = page.next_cursor
-      const countRes = await (await smartAlbumQuery(db, m, album)).select('id', { count: 'exact', head: true })
+      const cq = (await smartAlbumQuery(db, m, album)).query; const countRes = cq ? await cq.select('id', { count: 'exact', head: true }) : { count: 0 }
       total = countRes.error ? documents.length : countRes.count ?? documents.length
     }
   }
@@ -241,7 +241,7 @@ albums.post('/:aid/items', requireRole('editor'), async (c) => {
   const album = await loadAlbum(db, m.workspace_id, c.req.param('aid'))
   if (album.kind !== 'manual') throw badRequest('Only manual albums accept items')
   const body = await parseJson(c, albumItemsAdd)
-  const base = await scopedDocumentsQuery(db, m, 'id')
+  const base = scopedDocumentsQuery(db, m, 'id')
   const docs = unwrap(await base.is('deleted_at', null).in('id', body.document_ids), 'Verify documents')
   const ids = docs.map((d) => d.id)
   if (!ids.length) return c.json({ added: 0 })

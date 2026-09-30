@@ -26,9 +26,9 @@ home.get('/home', async (c) => {
   const to = new Date(Date.now() + 30 * DAY_MS).toISOString().slice(0, 10)
 
   const [recent, expiring, favorites] = await Promise.all([
-    scopedDocumentsQuery(db, m).then((q) => q.is('deleted_at', null).order('updated_at', { ascending: false }).limit(10)),
-    scopedDocumentsQuery(db, m).then((q) => q.is('deleted_at', null).gte('expiry_date', today).lte('expiry_date', to).order('expiry_date', { ascending: true }).limit(10)),
-    scopedDocumentsQuery(db, m).then((q) => q.is('deleted_at', null).eq('is_favorite', true).order('updated_at', { ascending: false }).limit(10)),
+    scopedDocumentsQuery(db, m).is('deleted_at', null).order('updated_at', { ascending: false }).limit(10),
+    scopedDocumentsQuery(db, m).is('deleted_at', null).gte('expiry_date', today).lte('expiry_date', to).order('expiry_date', { ascending: true }).limit(10),
+    scopedDocumentsQuery(db, m).is('deleted_at', null).eq('is_favorite', true).order('updated_at', { ascending: false }).limit(10),
   ])
   const recentDocs = unwrap(recent, 'Load recent documents')
   const expiringDocs = unwrap(expiring, 'Load expiring documents')

@@ -28,7 +28,7 @@ function aiKeyRequired(c) {
 
 async function readableDocIds(db, m, ids) {
   if (!ids.length) return new Map()
-  const base = await scopedDocumentsQuery(db, m, 'id, name, current_version_id')
+  const base = scopedDocumentsQuery(db, m, 'id, name, current_version_id')
   const rows = unwrap(await base.is('deleted_at', null).in('id', [...new Set(ids)]), 'Check readable documents')
   return new Map(rows.map((r) => [r.id, r]))
 }

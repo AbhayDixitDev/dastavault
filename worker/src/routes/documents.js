@@ -18,7 +18,7 @@ async function listPage(c, { deleted }) {
   const db = c.get('db')
   const m = c.get('membership')
   const q = parseQuery(c, documentListQuery)
-  let query = await scopedQuery(db, m)
+  let query = scopedQuery(db, m)
   query = deleted ? query.not('deleted_at', 'is', null) : query.is('deleted_at', null)
   if (q.q) query = query.ilike('name', `%${q.q.replace(/[%_,]/g, '')}%`)
   if (q.document_type) query = query.eq('document_type', q.document_type)

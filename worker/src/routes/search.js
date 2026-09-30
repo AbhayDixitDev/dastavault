@@ -30,12 +30,12 @@ async function applyFilters(db, m, query, filters, resolved) {
   if (personIds.length) {
     const rows = unwrap(await db.from('document_people').select('document_id').eq('workspace_id', wsId).in('person_id', personIds), 'Filter by person')
     const ids = [...new Set(rows.map((r) => r.document_id))]
-    if (!ids.length) return null
+    if (!ids.length) return { query: null }
     query = query.in('id', ids)
   }
   if (filters.group_id) {
     const ids = await groupDocumentIds(db, wsId, filters.group_id)
-    if (!ids.length) return null
+    if (!ids.length) return { query: null }
     query = query.in('id', ids)
   }
   const type = filters.document_type || resolved.document_type
@@ -44,10 +44,10 @@ async function applyFilters(db, m, query, filters, resolved) {
     let tagQuery = db.from('tags').select('id').eq('workspace_id', wsId)
     tagQuery = isUuid(filters.tag) ? tagQuery.eq('id', filters.tag) : tagQuery.ilike('name', escLike(filters.tag))
     const tagRows = unwrap(await tagQuery, 'Find tag')
-    if (!tagRows.length) return null
+    if (!tagRows.length) return { query: null }
     const rows = unwrap(await db.from('document_tags').select('document_id').eq('workspace_id', wsId).in('tag_id', tagRows.map((t) => t.id)), 'Filter by tag')
     const ids = [...new Set(rows.map((r) => r.document_id))]
-    if (!ids.length) return null
+    if (!ids.length) return { query: null }
     query = query.in('id', ids)
   }
   if (filters.date_from) query = query.gte('created_at', `${filters.date_from}T00:00:00Z`)
@@ -68,10 +68,10 @@ async function applyFilters(db, m, query, filters, resolved) {
     else fq = fq.like('mime_type', 'text/%')
     const rows = unwrap(await fq.limit(5000), 'Filter by file type')
     const ids = [...new Set(rows.map((r) => r.document_id))]
-    if (!ids.length) return null
+    if (!ids.length) return { query: null }
     query = query.in('id', ids)
   }
-  return query
+  return { query }
 }
 
 function hasAnyFilter(filters, resolved) {
@@ -149,9 +149,9 @@ export async function runSearch(c, { q = '', filters = {}, embedding = null, lim
   const ftsIds = ftsRows.map((r) => r.document_id)
 
   // candidate documents (visibility + filters in SQL)
-  let query = await scopedDocumentsQuery(db, m)
+  let query = scopedDocumentsQuery(db, m)
   query = query.is('deleted_at', null)
-  query = await applyFilters(db, m, query, filters, resolved)
+  query = (await applyFilters(db, m, query, filters, resolved)).query
   let docs = []
   const requireMatch = resolved.terms.length > 0 || resolved.document_numbers.length > 0 || (rawQ && !hasAnyFilter(filters, resolved))
   const matchTerms = [...new Set([rawQ, ...resolved.terms].filter((t) => t && t.length >= 2))].slice(0, 6)

@@ -67,7 +67,7 @@ async function loadReminder(db, wsId, id) {
 async function withDocuments(db, m, rows) {
   const ids = [...new Set(rows.map((r) => r.document_id).filter(Boolean))]
   if (!ids.length) return rows.map((r) => publicReminder(r))
-  const base = await scopedDocumentsQuery(db, m, 'id, name, deleted_at')
+  const base = scopedDocumentsQuery(db, m, 'id, name, deleted_at')
   const docs = unwrap(await base.in('id', ids), 'Load reminder documents')
   const byId = new Map(docs.map((d) => [d.id, d]))
   return rows.filter((r) => !r.document_id || byId.has(r.document_id)).map((r) => publicReminder(r, byId.get(r.document_id)?.name ?? null))
@@ -92,7 +92,7 @@ reminders.get('/expiring', async (c) => {
   const q = parseQuery(c, expiringQuery)
   const today = new Date().toISOString().slice(0, 10)
   const to = new Date(Date.now() + q.days * DAY_MS).toISOString().slice(0, 10)
-  const base = await scopedDocumentsQuery(db, m)
+  const base = scopedDocumentsQuery(db, m)
   const docs = unwrap(await base.is('deleted_at', null).gte('expiry_date', today).lte('expiry_date', to).order('expiry_date', { ascending: true }).limit(200), 'List expiring documents')
   await attachSummaries(db, m.workspace_id, docs)
   const now = Date.parse(`${today}T00:00:00Z`)
