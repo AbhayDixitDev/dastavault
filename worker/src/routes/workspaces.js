@@ -10,7 +10,7 @@ import { ensureProfile } from './me.js'
 const workspaces = new Hono()
 workspaces.use('*', requireAuth())
 
-const WS_FIELDS = 'id, name, kind, icon, default_visibility, settings, created_by, created_at, updated_at, deleted_at'
+const WS_FIELDS = 'id, name, kind, icon, default_visibility, features, ocr_languages, storage_bytes, owner_id, created_by, created_at, updated_at, deleted_at'
 const TERM_FIELDS =
   'workspace_id, workspace_label, member_label, member_label_plural, group_label, group_label_plural, subgroup_label, subgroup_label_plural, person_label, person_label_plural'
 
@@ -41,7 +41,10 @@ workspaces.get('/', async (c) => {
   return c.json({ workspaces: list })
 })
 
-// POST /api/workspaces - create workspace + terminology + owner membership
+// POST /api/workspaces - create workspace (+ terminology + owner membership)
+// The DB has an AFTER INSERT trigger on workspaces that inserts the owner membership
+// and the kind's terminology template. owner_id defaults to auth.uid(), which is NULL
+// under the service role, so it is set explicitly here.
 workspaces.post('/', async (c) => {
   const db = c.get('db')
   const user = c.get('user')
@@ -56,7 +59,9 @@ workspaces.post('/', async (c) => {
         kind: body.kind,
         icon: body.icon ?? null,
         default_visibility: body.default_visibility ?? 'workspace',
-        settings: body.settings ?? {},
+        ...(body.features ? { features: body.features } : {}),
+        ...(body.ocr_languages ? { ocr_languages: body.ocr_languages } : {}),
+        owner_id: user.id,
         created_by: user.id,
       })
       .select(WS_FIELDS)
@@ -65,18 +70,39 @@ workspaces.post('/', async (c) => {
   )
 
   try {
-    const terminology = unwrap(
-      await db
-        .from('workspace_terminology')
-        .insert({ workspace_id: workspace.id, ...buildTerminology(body.kind, body.terminology) })
-        .select(TERM_FIELDS)
-        .single(),
-      'Create terminology',
+    // Terminology: the trigger seeds the template; only overwrite when the client sent overrides.
+    const hasOverrides = body.terminology && Object.values(body.terminology).some((v) => v !== undefined)
+    let terminology
+    if (hasOverrides) {
+      terminology = unwrap(
+        await db
+          .from('workspace_terminology')
+          .upsert({ workspace_id: workspace.id, ...buildTerminology(body.kind, body.terminology) }, { onConflict: 'workspace_id' })
+          .select(TERM_FIELDS)
+          .single(),
+        'Save terminology',
+      )
+    } else {
+      terminology = await loadTerminology(db, workspace.id)
+      if (!terminology) {
+        terminology = unwrap(
+          await db.from('workspace_terminology').upsert({ workspace_id: workspace.id, ...buildTerminology(body.kind) }, { onConflict: 'workspace_id' }).select(TERM_FIELDS).single(),
+          'Create terminology',
+        )
+      }
+    }
+
+    // Membership: normally created by the trigger; insert only if it is missing.
+    const membership = unwrap(
+      await db.from('workspace_members').select('id, role_key').eq('workspace_id', workspace.id).eq('user_id', user.id).maybeSingle(),
+      'Load owner membership',
     )
-    unwrap(
-      await db.from('workspace_members').insert({ workspace_id: workspace.id, user_id: user.id, role_key: 'owner', invited_by: null }),
-      'Create owner membership',
-    )
+    if (!membership) {
+      unwrap(await db.from('workspace_members').insert({ workspace_id: workspace.id, user_id: user.id, role_key: 'owner', invited_by: null }), 'Create owner membership')
+    } else if (membership.role_key !== 'owner') {
+      unwrap(await db.from('workspace_members').update({ role_key: 'owner' }).eq('id', membership.id), 'Promote owner membership')
+    }
+
     await logActivity(db, {
       workspaceId: workspace.id,
       actorId: user.id,

@@ -18,7 +18,7 @@ import {
 import { ErrorBox, errorMessage } from '@/components/common/ErrorBox'
 import { initials } from '@/utils/format'
 
-function GroupRow({ group, children, t, canEdit, onEdit, onAddSub, onDelete, isSub }) {
+function GroupRow({ group, subgroups, t, canEdit, onEdit, onAddSub, onDelete, isSub }) {
   return (
     <li className="rounded-2xl border bg-card">
       <div className="flex items-center gap-3 p-4">
@@ -50,9 +50,9 @@ function GroupRow({ group, children, t, canEdit, onEdit, onAddSub, onDelete, isS
         )}
         <ChevronRight className="size-4 text-muted-foreground" />
       </div>
-      {children?.length > 0 && (
+      {subgroups?.length > 0 && (
         <ul className="border-t px-4 py-2">
-          {children.map((c) => (
+          {subgroups.map((c) => (
             <li key={c.id} className="flex items-center gap-2 py-1.5 pl-6 text-sm">
               <Link to={c.id} className="flex-1 truncate hover:underline">{c.name}</Link>
               <span className="text-xs text-muted-foreground">{c.member_count ?? 0}</span>
@@ -169,7 +169,7 @@ export function GroupsPage() {
             <GroupRow
               key={group.id}
               group={group}
-              children={children}
+              subgroups={children}
               t={t}
               canEdit={canEdit}
               onEdit={(g) => setDialog({ open: true, group: g, parentId: null })}

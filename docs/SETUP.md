@@ -129,6 +129,31 @@ Left menu: **Authentication**.
    account email, password = SMTP key, sender = your verified sender. This raises the auth email limit to Brevo's 300/day.
 5. **Sessions**: leave JWT expiry at 3600 s. The app refreshes tokens automatically.
 
+### 1.6 Google sign-in
+
+The app already has a **Continue with Google** button on the sign-in and sign-up pages. It calls Supabase
+(`signInWithOAuth({ provider: 'google' })`), so the Google client ID and secret live **only in the Supabase
+dashboard**. Never put the client secret in `.env.local`, in the Worker, or in Git.
+
+1. **Google Cloud Console** (<https://console.cloud.google.com/apis/credentials>):
+   - Create or open an **OAuth 2.0 Client ID** of type **Web application**.
+   - **Authorised JavaScript origins**: `http://localhost:5173` and later `https://YOUR-PROJECT.pages.dev`.
+   - **Authorised redirect URIs**: exactly `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback`
+     (copy the value shown in the Supabase Google provider page).
+   - If the consent screen is in *Testing* mode, add the Google accounts you will sign in with under **Test users**.
+2. **Supabase** -> **Authentication** -> **Providers** -> **Google**:
+   - Toggle **Enable Sign in with Google**.
+   - Paste the **Client ID** and **Client Secret** from Google.
+   - Save.
+3. Make sure the **Redirect URLs** list from step 1.5 includes your app origin, otherwise Supabase will
+   refuse to send the user back to `/w` after Google finishes.
+4. Test: open the app, click **Continue with Google**. The first time, Supabase creates the account and the
+   `handle_new_user` trigger creates the profile row automatically. Users who first signed up with email and
+   later use Google with the same address are linked to the same account.
+
+If you ever paste the client secret anywhere public (chat, screenshot, commit), open the Google client, click
+**Reset secret**, and paste the new one into Supabase.
+
 ## 2. Cloudflare account and Wrangler
 
 ### 2.1 Account

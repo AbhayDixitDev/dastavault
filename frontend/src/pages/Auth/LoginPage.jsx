@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import { GoogleButton } from '@/components/common/GoogleButton'
+import { OrDivider } from '@/components/common/OrDivider'
 
 const schema = z.object({
   email: z.string().email('Please enter a valid email address.'),
@@ -64,6 +66,8 @@ export function LoginPage() {
         </>
       }
     >
+      <GoogleButton className="w-full" redirectTo={location.state?.from || '/w'} />
+      <OrDivider />
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <div className="grid gap-2">
           <Label htmlFor="email">Email</Label>

@@ -1,6 +1,8 @@
 /**
- * Terminology templates (PRD section 4). Every UI label comes from the
- * workspace's stored terminology, never from hard-coded words.
+ * Terminology templates (PRD section 4). Values mirror the DB trigger
+ * `handle_new_workspace()` in 002_profiles_workspaces.sql, which seeds the
+ * row on workspace insert; the Worker only writes overrides on top.
+ * All labels are NOT NULL in the table.
  */
 export const TERMINOLOGY_TEMPLATES = Object.freeze({
   family: {
@@ -9,10 +11,10 @@ export const TERMINOLOGY_TEMPLATES = Object.freeze({
     member_label_plural: 'Family Members',
     group_label: 'Family Group',
     group_label_plural: 'Family Groups',
-    subgroup_label: null,
-    subgroup_label_plural: null,
-    person_label: 'Family Member',
-    person_label_plural: 'Family Members',
+    subgroup_label: 'Subgroup',
+    subgroup_label_plural: 'Subgroups',
+    person_label: 'Person',
+    person_label_plural: 'People',
   },
   company: {
     workspace_label: 'Company',
@@ -22,19 +24,19 @@ export const TERMINOLOGY_TEMPLATES = Object.freeze({
     group_label_plural: 'Departments',
     subgroup_label: 'Team',
     subgroup_label_plural: 'Teams',
-    person_label: 'Employee',
-    person_label_plural: 'Employees',
+    person_label: 'Person',
+    person_label_plural: 'People',
   },
   school: {
     workspace_label: 'School',
-    member_label: 'Staff',
-    member_label_plural: 'Staff',
+    member_label: 'Student',
+    member_label_plural: 'Students',
     group_label: 'Class',
     group_label_plural: 'Classes',
     subgroup_label: 'Section',
     subgroup_label_plural: 'Sections',
-    person_label: 'Student',
-    person_label_plural: 'Students',
+    person_label: 'Person',
+    person_label_plural: 'People',
   },
   organization: {
     workspace_label: 'Organisation',
@@ -44,8 +46,8 @@ export const TERMINOLOGY_TEMPLATES = Object.freeze({
     group_label_plural: 'Units',
     subgroup_label: 'Team',
     subgroup_label_plural: 'Teams',
-    person_label: 'Member',
-    person_label_plural: 'Members',
+    person_label: 'Person',
+    person_label_plural: 'People',
   },
   personal: {
     workspace_label: 'My Documents',
@@ -53,8 +55,8 @@ export const TERMINOLOGY_TEMPLATES = Object.freeze({
     member_label_plural: 'People',
     group_label: 'Folder',
     group_label_plural: 'Folders',
-    subgroup_label: null,
-    subgroup_label_plural: null,
+    subgroup_label: 'Subfolder',
+    subgroup_label_plural: 'Subfolders',
     person_label: 'Person',
     person_label_plural: 'People',
   },
@@ -76,7 +78,7 @@ export function buildTerminology(kind, overrides = {}) {
   const base = TERMINOLOGY_TEMPLATES[kind] || TERMINOLOGY_TEMPLATES.custom
   const out = { ...base }
   for (const [k, v] of Object.entries(overrides || {})) {
-    if (k in base && v !== undefined) out[k] = v
+    if (k in base && v !== undefined && v !== null && v !== '') out[k] = v
   }
   return out
 }

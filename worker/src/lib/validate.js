@@ -46,12 +46,17 @@ export const visibility = z.enum(['workspace', 'groups', 'people', 'private'])
 
 /* ---------- profiles ---------- */
 
-export const profilePatch = z.object({
-  display_name: shortText(120).optional(),
-  avatar_url: z.string().url().max(2000).nullable().optional(),
-  locale: z.string().trim().min(2).max(10).optional(),
-  large_text: z.boolean().optional(),
-})
+export const profilePatch = z
+  .object({
+    display_name: shortText(120).optional(),
+    avatar_key: z.string().trim().max(500).nullable().optional(), // R2 object key
+    preferred_language: z.string().trim().min(2).max(10).optional(),
+    locale: z.string().trim().min(2).max(10).optional(), // alias for preferred_language
+    large_text: z.boolean().optional(),
+    features: z.record(z.string(), z.unknown()).optional(),
+  ocr_languages: z.array(z.string().trim().min(2).max(10)).max(10).optional(),
+  })
+  .transform(({ locale, ...rest }) => (locale && !rest.preferred_language ? { ...rest, preferred_language: locale } : rest))
 
 /* ---------- workspaces ---------- */
 
@@ -61,8 +66,8 @@ export const terminologyFields = z.object({
   member_label_plural: shortText(60),
   group_label: shortText(60),
   group_label_plural: shortText(60),
-  subgroup_label: shortText(60).nullable(),
-  subgroup_label_plural: shortText(60).nullable(),
+  subgroup_label: shortText(60),
+  subgroup_label_plural: shortText(60),
   person_label: shortText(60),
   person_label_plural: shortText(60),
 })
@@ -72,7 +77,8 @@ export const workspaceCreate = z.object({
   kind: workspaceKind,
   icon: z.string().trim().max(64).nullable().optional(),
   default_visibility: visibility.optional(),
-  settings: z.record(z.string(), z.unknown()).optional(),
+  features: z.record(z.string(), z.unknown()).optional(),
+  ocr_languages: z.array(z.string().trim().min(2).max(10)).max(10).optional(),
   terminology: terminologyFields.partial().optional(),
 })
 
@@ -80,7 +86,8 @@ export const workspacePatch = z.object({
   name: shortText(120).optional(),
   icon: z.string().trim().max(64).nullable().optional(),
   default_visibility: visibility.optional(),
-  settings: z.record(z.string(), z.unknown()).optional(),
+  features: z.record(z.string(), z.unknown()).optional(),
+  ocr_languages: z.array(z.string().trim().min(2).max(10)).max(10).optional(),
 })
 
 /* ---------- members & invites ---------- */
@@ -97,6 +104,8 @@ export const groupCreate = z.object({
   name: shortText(120),
   description: optionalText(1000),
   color: z.string().trim().regex(/^#?[0-9a-fA-F]{3,8}$|^[a-z]{3,20}$/).nullable().optional(),
+  icon: z.string().trim().max(64).nullable().optional(),
+  position: z.number().int().min(0).max(100000).optional(),
   parent_group_id: uuid().nullable().optional(),
 })
 export const groupPatch = groupCreate.partial()
@@ -119,9 +128,10 @@ export const personCreate = z.object({
 })
 export const personPatch = personCreate.partial()
 
+// Must match the check constraint on person_relationships.relation
 export const RELATIONS = [
   'father', 'mother', 'parent', 'child', 'son', 'daughter', 'spouse',
-  'brother', 'sister', 'sibling', 'grandparent', 'grandchild', 'guardian', 'ward',
+  'brother', 'sister', 'grandparent', 'grandchild', 'guardian',
   'manager', 'reports_to', 'custom',
 ]
 export const relationshipCreate = z.object({
@@ -136,18 +146,30 @@ export const personGroupLink = z.object({
 
 /* ---------- documents ---------- */
 
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional()
 export const documentPatch = z.object({
-  title: shortText(200).optional(),
-  description: optionalText(5000),
-  doc_type: optionalText(60),
+  name: shortText(200).optional(),
+  document_type: optionalText(60),
   visibility: visibility.optional(),
-  person_id: uuid().nullable().optional(),
+  summary: optionalText(5000),
+  organisation: optionalText(200),
+  document_number: optionalText(120),
+  issue_date: isoDate,
+  expiry_date: isoDate,
+  is_favorite: z.boolean().optional(),
+  is_pinned: z.boolean().optional(),
+  // links (replace the full set when provided)
+  person_ids: z.array(uuid()).max(50).optional(),
+  group_ids: z.array(uuid()).max(50).optional(),
 })
 
 export const documentListQuery = paginationQuery.extend({
   q: z.string().trim().max(200).optional(),
   person_id: uuid().optional(),
-  sort: z.enum(['created_at', 'updated_at', 'title']).default('created_at'),
+  group_id: uuid().optional(),
+  document_type: z.string().trim().max(60).optional(),
+  favorite: z.enum(['1', 'true']).optional(),
+  sort: z.enum(['created_at', 'updated_at', 'name', 'expiry_date']).default('created_at'),
   order: z.enum(['asc', 'desc']).default('desc'),
 })
 

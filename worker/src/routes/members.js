@@ -10,7 +10,7 @@ import { randomToken, isUuid } from '../lib/ids.js'
 import { ensureProfile } from './me.js'
 
 const MEMBER_FIELDS = 'id, workspace_id, user_id, role_key, person_id, invited_by, joined_at'
-const INVITE_FIELDS = 'id, workspace_id, email, role_key, token, invited_by, expires_at, accepted_at, created_at'
+const INVITE_FIELDS = 'id, workspace_id, email, role_key, token, status, invited_by, expires_at, accepted_at, accepted_by, created_at'
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 /* =====================================================================
@@ -97,8 +97,8 @@ membersRoutes.post('/invites', requireRole('admin'), async (c) => {
     if (existingMember) throw conflict('This person is already a member')
   }
 
-  // One pending invite per email: replace any previous one.
-  await db.from('workspace_invites').delete().eq('workspace_id', me.workspace_id).ilike('email', body.email).is('accepted_at', null)
+  // One pending invite per email: revoke any previous one.
+  await db.from('workspace_invites').update({ status: 'revoked' }).eq('workspace_id', me.workspace_id).ilike('email', body.email).eq('status', 'pending')
 
   const invite = unwrap(
     await db
@@ -108,6 +108,7 @@ membersRoutes.post('/invites', requireRole('admin'), async (c) => {
         email: body.email,
         role_key: body.role_key,
         token: randomToken(32),
+        status: 'pending',
         invited_by: user.id,
         expires_at: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
       })
@@ -135,21 +136,26 @@ membersRoutes.get('/invites', requireRole('admin'), async (c) => {
   const db = c.get('db')
   const me = c.get('membership')
   const rows = unwrap(
-    await db.from('workspace_invites').select(INVITE_FIELDS).eq('workspace_id', me.workspace_id).is('accepted_at', null).order('created_at', { ascending: false }),
+    await db.from('workspace_invites').select(INVITE_FIELDS).eq('workspace_id', me.workspace_id).eq('status', 'pending').order('created_at', { ascending: false }),
     'List invites',
   )
   await attachProfiles(db, rows, 'invited_by', 'inviter')
+  const now = Date.now()
+  for (const r of rows) r.expired = new Date(r.expires_at).getTime() < now
   return c.json({ invites: rows })
 })
 
-// DELETE /invites/:inviteId  (admin+)
+// DELETE /invites/:inviteId  (admin+) - marks the invite revoked
 membersRoutes.delete('/invites/:inviteId', requireRole('admin'), async (c) => {
   const db = c.get('db')
   const me = c.get('membership')
   const inviteId = c.req.param('inviteId')
   if (!isUuid(inviteId)) throw badRequest('Invalid invite id')
-  const rows = unwrap(await db.from('workspace_invites').delete().eq('workspace_id', me.workspace_id).eq('id', inviteId).select('id, email'), 'Revoke invite')
-  if (!rows.length) throw notFound('Invite not found')
+  const rows = unwrap(
+    await db.from('workspace_invites').update({ status: 'revoked' }).eq('workspace_id', me.workspace_id).eq('id', inviteId).eq('status', 'pending').select('id, email'),
+    'Revoke invite',
+  )
+  if (!rows.length) throw notFound('Pending invite not found')
   await activityFor(c)('invite.revoked', 'invite', inviteId, { email: rows[0].email })
   return c.json({ ok: true })
 })
@@ -176,6 +182,7 @@ function publicInvite(invite) {
     email: invite.email,
     role_key: invite.role_key,
     workspace: { id: invite.workspace.id, name: invite.workspace.name, kind: invite.workspace.kind, icon: invite.workspace.icon },
+    status: invite.status,
     expires_at: invite.expires_at,
     accepted_at: invite.accepted_at,
     expired: new Date(invite.expires_at).getTime() < Date.now(),
@@ -194,8 +201,13 @@ inviteRoutes.post('/:token/accept', async (c) => {
   const user = c.get('user')
   const invite = await loadInviteByToken(db, c.req.param('token'))
 
-  if (invite.accepted_at) throw conflict('This invite has already been used')
-  if (new Date(invite.expires_at).getTime() < Date.now()) throw badRequest('This invite has expired')
+  // Implemented here (not via the accept_workspace_invite() SQL function) because auth.jwt() is null under the service role.
+  if (invite.status === 'accepted' || invite.accepted_at) throw conflict('This invite has already been used')
+  if (invite.status !== 'pending') throw badRequest(`This invite is ${invite.status}`)
+  if (new Date(invite.expires_at).getTime() < Date.now()) {
+    await db.from('workspace_invites').update({ status: 'expired' }).eq('id', invite.id)
+    throw badRequest('This invite has expired')
+  }
   if (!user.email || user.email !== invite.email.toLowerCase()) {
     throw forbidden(`This invite was sent to ${invite.email}. Sign in with that email to accept it.`)
   }
@@ -211,7 +223,10 @@ inviteRoutes.post('/:token/accept', async (c) => {
       'Create membership',
     )
   }
-  unwrap(await db.from('workspace_invites').update({ accepted_at: new Date().toISOString() }).eq('id', invite.id), 'Mark invite accepted')
+  unwrap(
+    await db.from('workspace_invites').update({ status: 'accepted', accepted_at: new Date().toISOString(), accepted_by: user.id }).eq('id', invite.id),
+    'Mark invite accepted',
+  )
   await logActivity(db, {
     workspaceId: invite.workspace_id,
     actorId: user.id,

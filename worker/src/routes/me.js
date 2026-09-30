@@ -6,7 +6,7 @@ import { parseJson, profilePatch } from '../lib/validate.js'
 const me = new Hono()
 me.use('*', requireAuth())
 
-const PROFILE_FIELDS = 'id, email, display_name, avatar_url, locale, large_text, created_at, updated_at'
+const PROFILE_FIELDS = 'id, email, display_name, avatar_key, preferred_language, large_text, settings, created_at, updated_at'
 
 /** Loads the caller's profile, creating it from the token on first sight. */
 export async function ensureProfile(db, user) {

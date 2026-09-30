@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import { GoogleButton } from '@/components/common/GoogleButton'
+import { OrDivider } from '@/components/common/OrDivider'
 
 const schema = z
   .object({
@@ -74,6 +76,8 @@ export function SignupPage() {
         </>
       }
     >
+      <GoogleButton label="Sign up with Google" className="w-full" />
+      <OrDivider />
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <div className="grid gap-2">
           <Label htmlFor="name">Your name</Label>

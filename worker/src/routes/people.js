@@ -73,6 +73,17 @@ async function loadRelationships(db, wsId, personId) {
     }))
 }
 
+/** people has a unique (workspace_id, user_id) constraint: one person per linked member. */
+async function assertUserLinkFree(db, wsId, userId, selfPersonId) {
+  if (!userId) return
+  const member = unwrap(await db.from('workspace_members').select('id').eq('workspace_id', wsId).eq('user_id', userId).maybeSingle(), 'Verify member')
+  if (!member) throw badRequest('user_id must be a member of this workspace')
+  let q = db.from('people').select('id, display_name').eq('workspace_id', wsId).eq('user_id', userId).is('deleted_at', null)
+  if (selfPersonId) q = q.neq('id', selfPersonId)
+  const other = unwrap(await q.maybeSingle(), 'Verify person link')
+  if (other) throw conflict(`This member is already linked to "${other.display_name}"`)
+}
+
 async function setGroups(db, wsId, personId, groupIds) {
   const ids = [...new Set(groupIds)]
   if (ids.length) {
@@ -110,6 +121,7 @@ people.post('/', requireRole('editor'), async (c) => {
   const db = c.get('db')
   const m = c.get('membership')
   const { group_ids, ...body } = await parseJson(c, personCreate)
+  await assertUserLinkFree(db, m.workspace_id, body.user_id, null)
   const person = unwrap(
     await db.from('people').insert({ ...body, workspace_id: m.workspace_id, created_by: c.get('user').id }).select(PERSON_FIELDS).single(),
     'Create person',
@@ -135,6 +147,7 @@ people.patch('/:pid', requireRole('editor'), async (c) => {
   const m = c.get('membership')
   const existing = await loadPerson(db, m.workspace_id, c.req.param('pid'))
   const { group_ids, ...patch } = await parseJson(c, personPatch)
+  if (patch.user_id) await assertUserLinkFree(db, m.workspace_id, patch.user_id, existing.id)
   const person = unwrap(
     await db.from('people').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', existing.id).eq('workspace_id', m.workspace_id).select(PERSON_FIELDS).single(),
     'Update person',

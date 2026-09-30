@@ -105,7 +105,7 @@ Each requirement has an ID. Priority: **P0** = must ship in the listed phase, **
 |---|---|---|
 | AUTH-1 | Sign up and sign in with email and password using Supabase Auth. | P0 |
 | AUTH-2 | Magic link sign in. | P1 |
-| AUTH-3 | Google sign in. | P2 |
+| AUTH-3 | Google sign in through Supabase Auth (client ID and secret configured only in the Supabase dashboard). | P0 |
 | AUTH-4 | Email verification before creating a workspace. | P0 |
 | AUTH-5 | Password reset by email. | P0 |
 | AUTH-6 | Profile: display name, avatar, preferred language, large-text mode. | P0 |
