@@ -34,9 +34,9 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     env:
-      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
-      VITE_API_URL: ${{ secrets.VITE_API_URL }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      VITE_API_URL: ${{ secrets.VITE_API_URL || vars.VITE_API_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -56,7 +56,7 @@ jobs:
         run: |
           for name in VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY VITE_API_URL; do
             if [ -z "${!name}" ]; then
-              echo "::error::The secret $name is missing. Add it under Settings -> Secrets and variables -> Actions (same value as for the website)."
+              echo "::error::The secret $name is missing. Add it under Settings -> Secrets and variables -> Actions (same value as for the website). Secrets or variables both work."
               exit 1
             fi
           done
@@ -90,7 +90,7 @@ jobs:
 
       - name: Signing key
         env:
-          DV_KEYSTORE_BASE64: ${{ secrets.DV_KEYSTORE_BASE64 }}
+          DV_KEYSTORE_BASE64: ${{ secrets.DV_KEYSTORE_BASE64 || vars.DV_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$DV_KEYSTORE_BASE64" ]; then
             echo "$DV_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
@@ -102,9 +102,9 @@ jobs:
       - name: Build the APK
         working-directory: mobile/android
         env:
-          DV_KEYSTORE_PASSWORD: ${{ secrets.DV_KEYSTORE_PASSWORD }}
-          DV_KEY_ALIAS: ${{ secrets.DV_KEY_ALIAS }}
-          DV_KEY_PASSWORD: ${{ secrets.DV_KEY_PASSWORD }}
+          DV_KEYSTORE_PASSWORD: ${{ secrets.DV_KEYSTORE_PASSWORD || vars.DV_KEYSTORE_PASSWORD }}
+          DV_KEY_ALIAS: ${{ secrets.DV_KEY_ALIAS || vars.DV_KEY_ALIAS }}
+          DV_KEY_PASSWORD: ${{ secrets.DV_KEY_PASSWORD || vars.DV_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon \
