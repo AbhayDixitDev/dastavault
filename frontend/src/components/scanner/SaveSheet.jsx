@@ -14,14 +14,15 @@ import { DOCUMENT_TYPES, loadDocumentTypes } from './documentTypes'
 /**
  * Bottom sheet: name, type, people, groups -> onSave({ name, document_type, person_ids, group_ids, people, groups })
  */
-export function SaveSheet({ open, onOpenChange, defaultName, pageCount = 1, saving = false, onSave }) {
+export function SaveSheet({ open, onOpenChange, defaultName, pageCount = 1, saving = false, onSave, initialType = '', initialPersonIds = [] }) {
   const { workspaceId, terminology: t } = useWorkspace()
   const { data: people = [] } = useGetPeopleQuery(workspaceId, { skip: !open })
   const { data: groups = [] } = useGetGroupsQuery(workspaceId, { skip: !open })
   const [types, setTypes] = useState(DOCUMENT_TYPES)
   const [name, setName] = useState(defaultName || '')
-  const [type, setType] = useState('')
-  const [personIds, setPersonIds] = useState([])
+  // Chosen in the quick add sheet before scanning ("Where does it belong?").
+  const [type, setType] = useState(initialType)
+  const [personIds, setPersonIds] = useState(initialPersonIds)
   const [groupIds, setGroupIds] = useState([])
   const [openedWith, setOpenedWith] = useState(null)
 

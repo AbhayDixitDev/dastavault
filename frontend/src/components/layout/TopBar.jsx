@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Search, Mic, ImageIcon, LogOut, UserCircle, Repeat, Bell } from 'lucide-react'
+import { Search, Mic, ImageIcon, LogOut, UserCircle, Repeat, Bell, Moon, Sun } from 'lucide-react'
+import { useDispatch, useSelector } from 'react-redux'
+import { selectUi, setTheme } from '@/store/slices/uiSlice'
 import { NotificationsSheet, useUnreadNotificationsCount } from '@/components/search/NotificationsSheet'
 import { useIsDesktop } from '@/hooks/useMediaQuery'
 import { useWorkspace } from '@/hooks/useWorkspace'
@@ -25,6 +27,10 @@ export function TopBar() {
   const navigate = useNavigate()
   const [notifOpen, setNotifOpen] = useState(false)
   const unread = useUnreadNotificationsCount(workspaceId)
+  const dispatch = useDispatch()
+  const { theme } = useSelector(selectUi)
+  const isDark = theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  const toggleTheme = () => dispatch(setTheme(isDark ? 'light' : 'dark'))
 
   const goSearch = (e) => {
     e.preventDefault()
@@ -61,6 +67,9 @@ export function TopBar() {
       )}
 
       <div className="ml-auto flex items-center gap-1">
+        <Button variant="ghost" size="icon" title={isDark ? 'Light mode' : 'Dark mode'} onClick={toggleTheme}>
+          {isDark ? <Sun className="size-5" /> : <Moon className="size-5" />}
+        </Button>
         <Button variant="ghost" size="icon" className="relative" title="Notifications" onClick={() => setNotifOpen(true)}>
           <Bell className="size-5" />
           {unread > 0 && (

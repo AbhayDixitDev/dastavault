@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import { toast } from 'sonner'
 import { ArrowLeft, CheckCircle2, CloudUpload, Copy, ExternalLink, FileText, WifiOff, X, AlertTriangle } from 'lucide-react'
@@ -70,6 +70,14 @@ function makeItem(files, defaults) {
 export function UploadPage() {
   const navigate = useNavigate()
   const dispatch = useDispatch()
+  const [searchParams] = useSearchParams()
+  // Chosen in the quick add sheet ("Where does it belong?") or on a person's page.
+  const presets = {
+    document_type: searchParams.get('type') || '',
+    person_ids: searchParams.get('person') ? [searchParams.get('person')] : [],
+    group_ids: searchParams.get('group') ? [searchParams.get('group')] : [],
+    tags: [],
+  }
   const { workspaceId, terminology: t, can } = useWorkspace()
   const { data: people = [] } = useGetPeopleQuery(workspaceId, { skip: !workspaceId })
   const { data: groups = [] } = useGetGroupsQuery(workspaceId, { skip: !workspaceId })
@@ -98,7 +106,7 @@ export function UploadPage() {
     }
     if (!ok.length) return
     const last = itemsRef.current[itemsRef.current.length - 1]
-    const defaults = last ? { document_type: '', person_ids: last.person_ids, group_ids: last.group_ids, tags: last.tags } : {}
+    const defaults = last ? { document_type: presets.document_type, person_ids: last.person_ids, group_ids: last.group_ids, tags: last.tags } : presets
     setItems((arr) => {
       if (combine && arr.length === 1 && arr[0].status === 'idle') {
         const it = arr[0]

@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useAuth } from '@/hooks/useAuth'
 import { primaryNav, secondaryNav } from './nav'
+import { QuickAddSheet } from './QuickAddSheet'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { LogOut, Repeat, UserCircle } from 'lucide-react'
@@ -13,11 +14,12 @@ export function BottomNav() {
   const { signOut } = useAuth()
   const navigate = useNavigate()
   const [moreOpen, setMoreOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
   const items = primaryNav(terminology)
 
   return (
     <>
-      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur">
+      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 shadow-[0_-6px_24px_-12px_rgb(0_0_0/0.25)] backdrop-blur">
         <ul className="grid grid-cols-5">
           {items.map((item) => {
             const Icon = item.icon
@@ -38,15 +40,17 @@ export function BottomNav() {
             if (item.primary) {
               return (
                 <li key={item.to} className="relative">
-                  <NavLink
-                    to={item.to}
+                  <button
+                    type="button"
+                    onClick={() => setAddOpen(true)}
+                    aria-label="Add a document, note or password"
                     className="absolute left-1/2 top-0 flex -translate-x-1/2 -translate-y-5 flex-col items-center"
                   >
-                    <span className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-4 ring-background">
+                    <span className="flex size-14 items-center justify-center rounded-2xl bg-brand-gradient text-white shadow-lift ring-4 ring-card transition active:scale-95">
                       <Icon className="size-7" />
                     </span>
-                    <span className="mt-1 text-[11px] font-medium text-primary">{item.label}</span>
-                  </NavLink>
+                    <span className="mt-1 text-[11px] font-semibold text-primary">{item.label}</span>
+                  </button>
                 </li>
               )
             }
@@ -70,6 +74,8 @@ export function BottomNav() {
           })}
         </ul>
       </nav>
+
+      <QuickAddSheet open={addOpen} onOpenChange={setAddOpen} />
 
       <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
         <SheetContent side="bottom" className="rounded-t-2xl pb-8">

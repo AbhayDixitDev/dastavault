@@ -47,6 +47,7 @@ Everything is chosen so the first version costs **zero or near zero** per month.
 ```
 dastavault/
   frontend/        React + Vite PWA (Cloudflare Pages)
+  mobile/          Android app: the frontend packaged with Capacitor (APK)
   worker/          Cloudflare Worker + Hono API
   backend/
     migrations/    SQL migrations for Supabase PostgreSQL (Supabase is the database)
@@ -56,6 +57,11 @@ dastavault/
     SETUP.md       Step-by-step free deployment guide
   README.md
 ```
+
+## Android app
+
+Download the APK from the [releases](../../releases) of this repository. How it is built and released:
+[mobile/README.md](mobile/README.md).
 
 ## Quick start (local)
 

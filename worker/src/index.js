@@ -65,6 +65,8 @@ app.use('*', async (c, next) => {
     .split(',')
     .map((s) => s.trim().replace(/\/$/, ''))
     .filter(Boolean)
+    // The Android app (mobile/, Capacitor) serves the web app from this origin.
+    .concat(['https://localhost', 'capacitor://localhost'])
   return cors({
     origin: (origin) => (allowed.includes(origin) ? origin : null),
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

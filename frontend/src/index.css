@@ -62,11 +62,12 @@
 }
 
 .dark {
-  --background: oklch(0.16 0.025 282);
+  /* Near black for AMOLED screens; cards one step above it. */
+  --background: oklch(0.12 0.012 282);
   --foreground: oklch(0.96 0.01 290);
-  --card: oklch(0.215 0.03 282);
+  --card: oklch(0.175 0.02 282);
   --card-foreground: oklch(0.96 0.01 290);
-  --popover: oklch(0.215 0.03 282);
+  --popover: oklch(0.19 0.022 282);
   --popover-foreground: oklch(0.96 0.01 290);
 
   --primary: oklch(0.72 0.18 285);
@@ -94,7 +95,7 @@
   --chart-4: oklch(0.74 0.17 10);
   --chart-5: oklch(0.72 0.2 300);
 
-  --sidebar: oklch(0.185 0.03 282);
+  --sidebar: oklch(0.15 0.018 282);
   --sidebar-foreground: oklch(0.93 0.015 290);
   --sidebar-primary: oklch(0.72 0.18 285);
   --sidebar-primary-foreground: oklch(0.15 0.04 282);

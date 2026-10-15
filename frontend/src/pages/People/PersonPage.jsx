@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowLeft, Pencil, Trash2, Plus, X, Mail, Phone, Cake, FileText } from 'lucide-react'
+import { ArrowLeft, Pencil, Trash2, Plus, X, Mail, Phone, Cake, FileText, ScanLine, Upload } from 'lucide-react'
+import { useGetDocumentsQuery } from '@/store/api/documentsApi'
+import { DocumentCard } from '@/components/documents/DocumentCard'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import {
   useGetPersonQuery,
@@ -33,6 +35,8 @@ export function PersonPage() {
   const { workspaceId, terminology: t, can } = useWorkspace()
   const { data: person, isLoading, error, refetch } = useGetPersonQuery({ workspaceId, personId: id })
   const { data: groups = [] } = useGetGroupsQuery(workspaceId)
+  const { data: docsData, isLoading: docsLoading } = useGetDocumentsQuery({ workspaceId, person_id: id, limit: 8 }, { skip: !workspaceId })
+  const personDocs = docsData?.documents ?? []
   const [deletePerson] = useDeletePersonMutation()
   const [removeRelationship] = useRemoveRelationshipMutation()
   const [addToGroup] = useAddPersonToGroupMutation()
@@ -180,11 +184,36 @@ export function PersonPage() {
         </Card>
 
         <Card className="md:col-span-2">
-          <CardHeader className="pb-2"><CardTitle className="text-base">Documents</CardTitle></CardHeader>
-          <CardContent>
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <FileText className="size-4" /> Documents linked to {person.display_name} will appear here once uploads are ready (Phase 2).
-            </p>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-base">Documents</CardTitle>
+            <Button asChild variant="ghost" size="sm">
+              <Link to={`/w/${workspaceId}/documents?person_id=${id}`}>See all</Link>
+            </Button>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {can('editor') && (
+              <div className="grid grid-cols-2 gap-2">
+                <Button asChild className="rounded-xl">
+                  <Link to={`/w/${workspaceId}/scan?person=${id}`}><ScanLine /> Scan for {person.display_name.split(/\s+/)[0]}</Link>
+                </Button>
+                <Button asChild variant="outline" className="rounded-xl">
+                  <Link to={`/w/${workspaceId}/upload?person=${id}`}><Upload /> Upload file</Link>
+                </Button>
+              </div>
+            )}
+            {docsLoading ? (
+              <Skeleton className="h-24 rounded-xl" />
+            ) : personDocs.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {personDocs.slice(0, 8).map((d) => (
+                  <DocumentCard key={d.id} document={d} workspaceId={workspaceId} />
+                ))}
+              </div>
+            ) : (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <FileText className="size-4" /> No documents for {person.display_name} yet.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

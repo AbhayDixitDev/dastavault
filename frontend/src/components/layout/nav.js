@@ -1,7 +1,7 @@
 import {
   Home,
   Search,
-  ScanLine,
+  Plus,
   FileText,
   MoreHorizontal,
   Users,
@@ -18,9 +18,9 @@ import {
 export function primaryNav(t) {
   return [
     { to: '', label: 'Home', icon: Home, end: true },
-    { to: 'search', label: 'Search', icon: Search },
-    { to: 'scan', label: 'Scan', icon: ScanLine, primary: true },
     { to: 'documents', label: 'Documents', icon: FileText },
+    { to: 'add', label: 'Add', icon: Plus, primary: true },
+    { to: 'search', label: 'Search', icon: Search },
     { to: 'more', label: 'More', icon: MoreHorizontal, more: true },
   ].map((i) => ({ ...i, t }))
 }

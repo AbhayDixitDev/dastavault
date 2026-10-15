@@ -1,0 +1,5 @@
+package com.dastavault.app;
+
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {}

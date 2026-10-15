@@ -1,4 +1,7 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { Plus } from 'lucide-react'
+import { QuickAddSheet } from './QuickAddSheet'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { primaryNav, secondaryNav } from './nav'
@@ -26,7 +29,8 @@ function SideLink({ to, label, icon: Icon, end, primary }) {
 
 export function Sidebar() {
   const { terminology } = useWorkspace()
-  const primary = primaryNav(terminology).filter((i) => !i.more)
+  const primary = primaryNav(terminology).filter((i) => !i.more && !i.primary)
+  const [addOpen, setAddOpen] = useState(false)
   const secondary = secondaryNav(terminology)
 
   return (
@@ -37,6 +41,16 @@ export function Sidebar() {
       </div>
       <div className="px-3 pb-3">
         <WorkspaceSwitcher />
+      </div>
+      <div className="px-3 pb-3">
+        <button
+          type="button"
+          onClick={() => setAddOpen(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-gradient px-3 py-2.5 text-sm font-semibold text-white shadow-lift transition active:scale-[0.98]"
+        >
+          <Plus className="size-5" /> Add
+        </button>
+        <QuickAddSheet open={addOpen} onOpenChange={setAddOpen} />
       </div>
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3">
         {primary.map((item) => (

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DastaVault</string>
+    <string name="title_activity_main">DastaVault</string>
+    <string name="package_name">com.dastavault.app</string>
+    <string name="custom_url_scheme">com.dastavault.app</string>
+</resources>

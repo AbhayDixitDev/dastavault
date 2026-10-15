@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Camera, FileStack, Images, RefreshCcw, WifiOff } from 'lucide-react'
 import dayjs from 'dayjs'
@@ -29,6 +29,9 @@ import { UPLOAD_STATUS } from '@/services/offline/db'
 export function ScannerPage() {
   const { workspaceId } = useWorkspace()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const presetType = searchParams.get('type') || ''
+  const presetPersonIds = searchParams.get('person') ? [searchParams.get('person')] : []
   const scan = useScanState()
   const pages = scan.pages
   const [step, setStep] = useState('loading')
@@ -411,7 +414,15 @@ export function ScannerPage() {
         onDiscard={onDiscard}
       />
       {save.error && <Alert variant="destructive" className="mt-4"><AlertTitle>Could not save</AlertTitle><AlertDescription>{save.error}</AlertDescription></Alert>}
-      <SaveSheet open={saveOpen} onOpenChange={setSaveOpen} defaultName={defaultName} pageCount={pages.length} onSave={onSave} />
+      <SaveSheet
+        open={saveOpen}
+        onOpenChange={setSaveOpen}
+        defaultName={defaultName}
+        pageCount={pages.length}
+        onSave={onSave}
+        initialType={presetType}
+        initialPersonIds={presetPersonIds}
+      />
     </>
   )
 }
