@@ -65,16 +65,15 @@ jobs:
         with:
           node-version: 22
 
-      - name: Placeholder settings for a test build
-        if: github.event.inputs.test_build == 'true'
-        run: |
-          echo "VITE_SUPABASE_URL=https://example.supabase.co" >> "$GITHUB_ENV"
-          echo "VITE_SUPABASE_PUBLISHABLE_KEY=test-build" >> "$GITHUB_ENV"
-          echo "VITE_API_URL=https://example.workers.dev" >> "$GITHUB_ENV"
-
       - name: Build the web app
         working-directory: frontend
         run: |
+          if [ "${{ github.event.inputs.test_build }}" = "true" ]; then
+            # Placeholder settings: the test build only checks that the APK builds.
+            export VITE_SUPABASE_URL=https://example.supabase.co
+            export VITE_SUPABASE_PUBLISHABLE_KEY=test-build
+            export VITE_API_URL=https://example.workers.dev
+          fi
           npm ci
           npm run build
 
