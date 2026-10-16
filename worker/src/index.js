@@ -32,12 +32,17 @@ import notes from './routes/notes.js'
 import home from './routes/home.js'
 import vault from './routes/vault.js'
 import { processDueReminders } from './lib/reminderCron.js'
+import { createSupabaseBucket } from './lib/supabaseBucket.js'
 
 const app = new Hono()
 
 /* ---------- global middleware ---------- */
 
 app.use('*', async (c, next) => {
+  // Without an R2 bucket bound, files live in Supabase Storage (lib/supabaseBucket.js).
+  if (c.env && !c.env.DOCUMENTS_BUCKET && c.env.SUPABASE_URL) {
+    c.env.DOCUMENTS_BUCKET = createSupabaseBucket(c.env)
+  }
   const requestId = c.req.header('x-request-id')?.slice(0, 64) || crypto.randomUUID()
   c.set('requestId', requestId)
   c.header('X-Request-Id', requestId)

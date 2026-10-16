@@ -5,8 +5,7 @@ name: Deploy API (Worker)
 #
 # Repository secrets (Settings -> Secrets and variables -> Actions):
 #   CLOUDFLARE_API_TOKEN       Cloudflare -> My Profile -> API Tokens -> Create Token
-#                              -> template "Edit Cloudflare Workers" (add "Workers R2
-#                              Storage: Edit" under Account permissions)
+#                              -> template "Edit Cloudflare Workers"
 #   CLOUDFLARE_ACCOUNT_ID      Cloudflare dashboard -> Workers & Pages -> Account ID (right side)
 #   SUPABASE_SERVICE_ROLE_KEY  Supabase -> Project Settings -> API Keys -> secret / service_role key
 # Optional:
@@ -55,14 +54,22 @@ jobs:
         working-directory: worker
         run: npm ci
 
-      - name: File storage (R2 bucket)
-        working-directory: worker
+      - name: File storage (Supabase Storage bucket)
+        # Files live in a private Supabase Storage bucket (no payment card
+        # needed, unlike R2). Created once; an existing bucket is kept.
+        env:
+          SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          npx wrangler r2 bucket create document-manager-files 2>&1 | tee r2.log || true
-          if grep -qi "already exists\|already own" r2.log || grep -qi "created" r2.log; then
+          set -a; . mobile/app.env; set +a
+          answer=$(curl -s -X POST "${VITE_SUPABASE_URL%/}/storage/v1/bucket" \
+            -H "Authorization: Bearer $SERVICE_ROLE" -H "apikey: $SERVICE_ROLE" -H "Content-Type: application/json" \
+            --data '{"id":"documents","name":"documents","public":false,"file_size_limit":52428800}')
+          echo "$answer"
+          if echo "$answer" | grep -qiE '"name":"documents"|already exists|Duplicate'; then
             echo "Bucket ready"
           else
-            echo "::warning::Could not create the R2 bucket. Enable R2 once in the Cloudflare dashboard (R2 Object Storage -> Enable) and run again."
+            echo "::error::Could not create the Supabase Storage bucket 'documents'. Check SUPABASE_SERVICE_ROLE_KEY."
+            exit 1
           fi
 
       - name: workers.dev subdomain

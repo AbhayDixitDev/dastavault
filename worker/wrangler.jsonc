@@ -11,13 +11,10 @@
     "enabled": true
   },
 
-  // Private R2 bucket. Files are only ever served through signed Worker URLs.
-  "r2_buckets": [
-    {
-      "binding": "DOCUMENTS_BUCKET",
-      "bucket_name": "document-manager-files"
-    }
-  ],
+  // Files are kept in a private Supabase Storage bucket ("documents", see
+  // src/lib/supabaseBucket.js), which needs no payment card. To use a private
+  // R2 bucket instead, add it here; the Worker then uses R2:
+  //   "r2_buckets": [{ "binding": "DOCUMENTS_BUCKET", "bucket_name": "document-manager-files" }],
 
   // Non-secret configuration. Secrets live in .dev.vars (local) and `wrangler secret put` (prod).
   "vars": {
