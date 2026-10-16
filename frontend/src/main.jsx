@@ -7,6 +7,7 @@ import { router } from '@/routes'
 import { AuthListener } from '@/components/common/AuthListener'
 import { ThemeManager } from '@/components/common/ThemeManager'
 import { AppUpdate } from '@/components/common/AppUpdate'
+import { BackButtonHandler } from '@/components/common/BackButtonHandler'
 import { Toaster } from '@/components/ui/sonner'
 import './index.css'
 
@@ -17,6 +18,7 @@ createRoot(document.getElementById('root')).render(
       <AuthListener />
       <RouterProvider router={router} />
       <AppUpdate />
+      <BackButtonHandler />
       <Toaster position="top-center" richColors closeButton />
     </Provider>
   </StrictMode>,
