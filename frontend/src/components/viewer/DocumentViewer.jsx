@@ -3,7 +3,8 @@ import { Download, Maximize, Minimize, FileText, ExternalLink } from 'lucide-rea
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { useGetDocumentContentQuery } from '@/store/api/documentsApi'
-import { getSignedUrl, fetchFileBlob, useSignedUrl } from '@/services/files/signedUrls'
+import { fetchFileBlob, useSignedUrl } from '@/services/files/signedUrls'
+import { openStoredFile, saveStoredFile } from '@/lib/nativeFiles'
 import { fileKind, formatBytes } from '@/services/files'
 import { DocumentTypeIcon } from '@/components/documents/DocumentTypeIcon'
 import { SignedImage } from '@/components/documents/SignedImage'
@@ -117,7 +118,10 @@ function FileMode({ workspaceId, file, document: doc }) {
       <p className="font-medium">{file.original_filename || doc?.name}</p>
       <p className="max-w-sm text-sm text-muted-foreground">{label}</p>
       <p className="text-xs text-muted-foreground">{formatBytes(file.size_bytes)}</p>
-      <DownloadButton workspaceId={workspaceId} file={file} variant="default" />
+      <div className="flex flex-wrap justify-center gap-2">
+        <Button variant="outline" onClick={() => openStoredFile(workspaceId, file)}><ExternalLink /> Open</Button>
+        <DownloadButton workspaceId={workspaceId} file={file} variant="default" size="default" />
+      </div>
     </div>
   )
 }
@@ -127,17 +131,8 @@ function DownloadButton({ workspaceId, file, variant = 'outline', size = 'sm', c
   if (!file) return null
   const go = async () => {
     setBusy(true)
-    const url = await getSignedUrl(workspaceId, file.id, { download: true })
+    await saveStoredFile(workspaceId, file)
     setBusy(false)
-    if (!url) return
-    const a = document.createElement('a')
-    a.href = url
-    a.download = file.original_filename || 'document'
-    a.rel = 'noopener'
-    a.target = '_blank'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
   }
   return (
     <Button variant={variant} size={size} onClick={go} disabled={busy} className={className}>
@@ -184,7 +179,7 @@ export function DocumentViewer({ workspaceId, document: doc, versionId, classNam
         <span className="truncate px-1 text-sm text-muted-foreground">{full ? doc?.name : info.original?.original_filename || ''}</span>
         <div className="flex items-center gap-1">
           {info.mode === 'pdf' && info.pdf && (
-            <Button variant="ghost" size="sm" onClick={async () => { const u = await getSignedUrl(workspaceId, info.pdf.id); if (u) window.open(u, '_blank', 'noopener') }}>
+            <Button variant="ghost" size="sm" onClick={() => openStoredFile(workspaceId, info.pdf)}>
               <ExternalLink /> Open
             </Button>
           )}

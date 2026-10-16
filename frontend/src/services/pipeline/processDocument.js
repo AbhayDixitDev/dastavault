@@ -30,7 +30,7 @@ function say(onStatus, text, extra) {
   try { onStatus?.(text, extra) } catch { /* listener errors are not ours */ }
 }
 
-export async function processDocument({ workspaceId, documentId, versionId, files = [], people = [], groups = [], workspaceKind, lang, onStatus } = {}) {
+export async function processDocument({ workspaceId, documentId, versionId, files = [], people = [], groups = [], workspaceKind, lang, onStatus, alreadyRead = null } = {}) {
   const result = { ok: false, textOk: false, suggestionsOk: false, embeddingsOk: false }
   if (!workspaceId || !documentId) return result
   const base = `/workspaces/${workspaceId}/documents/${documentId}`
@@ -38,9 +38,14 @@ export async function processDocument({ workspaceId, documentId, versionId, file
   // 1. Read text
   say(onStatus, STATUS.READING, { step: 'text', progress: 0 })
   let read = { ok: false, text: '', language: lang || 'eng', confidence: 0, pages: [] }
-  try {
-    read = await readDocument({ files }, { lang, onProgress: (p) => say(onStatus, STATUS.READING, { step: 'text', progress: p?.progress ?? 0, page: p?.page, pages: p?.pages }) })
-  } catch { /* readDocument never throws, belt and braces */ }
+  // Text read before the upload (the upload page reads photos to fill in the details) is reused.
+  if (alreadyRead?.ok) {
+    read = alreadyRead
+  } else {
+    try {
+      read = await readDocument({ files }, { lang, onProgress: (p) => say(onStatus, STATUS.READING, { step: 'text', progress: p?.progress ?? 0, page: p?.page, pages: p?.pages }) })
+    } catch { /* readDocument never throws, belt and braces */ }
+  }
   try {
     await api.put(`${base}/text`, {
       version_id: versionId,

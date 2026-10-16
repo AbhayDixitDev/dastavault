@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import { toast } from 'sonner'
-import { ArrowLeft, CheckCircle2, CloudUpload, Copy, ExternalLink, FileText, WifiOff, X, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, CloudUpload, Copy, Crop, ExternalLink, FileText, Sparkles, UserPlus, WifiOff, X, AlertTriangle } from 'lucide-react'
 import { useWorkspace } from '@/hooks/useWorkspace'
-import { useGetPeopleQuery } from '@/store/api/peopleApi'
+import { useGetPeopleQuery, useCreatePersonMutation } from '@/store/api/peopleApi'
 import { useGetGroupsQuery } from '@/store/api/groupsApi'
 import { documentsApi } from '@/store/api/documentsApi'
 import { api } from '@/services/api/client'
@@ -26,6 +26,8 @@ import { PeoplePicker } from '@/components/documents/PeoplePicker'
 import { GroupPicker } from '@/components/documents/GroupPicker'
 import { TagInput } from '@/components/documents/TagInput'
 import { DuplicateDialog } from '@/components/documents/DuplicateDialog'
+import { ImageCropper } from '@/components/documents/ImageCropper'
+import { typeLabel } from '@/services/extraction/documentTypes'
 
 const STATUS = {
   idle: '',
@@ -64,8 +66,14 @@ function makeItem(files, defaults) {
     error: '',
     documentId: null,
     versionOf: null, // document id when adding as a new version
+    touched: {}, // fields the user changed; reading the photo never overwrites them
+    read: null, // text read from the files before the upload (reused afterwards)
+    reading: 'idle', // idle | reading | done | none
+    found: null, // { holderName, type, filled } what reading found, shown as hints
   }
 }
+
+const readable = (f) => fileKind(f) === 'image' || fileKind(f) === 'pdf'
 
 export function UploadPage() {
   const navigate = useNavigate()
@@ -85,8 +93,14 @@ export function UploadPage() {
   const [combine, setCombine] = useState(false)
   const [running, setRunning] = useState(false)
   const [dup, setDup] = useState(null) // { item, matches, resolve }
+  const [cropping, setCropping] = useState(null) // { itemId, index }
+  const [createPerson] = useCreatePersonMutation()
   const itemsRef = useRef(items)
   itemsRef.current = items
+  const lookupRef = useRef({ people, groups })
+  lookupRef.current = { people, groups }
+  const readQueue = useRef(Promise.resolve())
+  const readJobs = useRef(new Map()) // item id -> promise of the reading
 
   useEffect(() => () => itemsRef.current.forEach((it) => it.previews.forEach((u) => u && URL.revokeObjectURL(u))), [])
 
@@ -96,6 +110,89 @@ export function UploadPage() {
     it?.previews.forEach((u) => u && URL.revokeObjectURL(u))
     return arr.filter((x) => x.id !== id)
   })
+
+  /** A change made by the user: remembered so reading the photo does not undo it. */
+  const edit = (id, field, changes) => patch(id, (it) => ({ ...changes, touched: { ...it.touched, [field]: true } }))
+
+  /**
+   * Reads the text of an item's photos or PDF (one item at a time, on this
+   * device) and fills in name, type and person where the user has not.
+   */
+  const autoRead = (id) => {
+    const job = readQueue.current.then(async () => {
+      const it = itemsRef.current.find((x) => x.id === id)
+      if (!it || it.status !== 'idle' || !it.files.some(readable)) {
+        if (it) patch(id, { reading: 'none' })
+        return
+      }
+      const files = it.files
+      patch(id, { reading: 'reading' })
+      try {
+        const [{ readDocument }, { extractSuggestions }] = await Promise.all([import('@/services/ocr'), import('@/services/extraction')])
+        const read = await readDocument({ files: files.map((f, i) => ({ kind: 'original', mime_type: f.type, page_number: i + 1, blob: f })) })
+        const now = itemsRef.current.find((x) => x.id === id)
+        if (!now || now.files !== files) return // removed or cropped meanwhile; a new reading follows
+        if (!read?.ok) {
+          patch(id, { reading: 'none', read: null })
+          return
+        }
+        const { people: ppl, groups: grps } = lookupRef.current
+        const found = extractSuggestions(read.text, { people: ppl, groups: grps })
+        const get = (k) => found.find((x) => x.key === k)
+        patch(id, (cur) => {
+          const next = { reading: 'done', read }
+          const name = get('suggested_name')
+          if (name && !cur.touched.name) next.name = name.value
+          const type = get('document_type')
+          if (type && type.confidence >= 0.45 && !cur.touched.type && !presets.document_type) next.document_type = type.value
+          const person = get('person_id')
+          if (person && !cur.touched.people && !cur.person_ids.length) next.person_ids = [person.value]
+          const group = get('group_id')
+          if (group && !cur.touched.groups && !cur.group_ids.length) next.group_ids = [group.value]
+          const holder = get('holder_name')
+          next.found = {
+            type: type?.value || null,
+            holderName: !person && holder ? holder.value : null,
+            filled: Boolean(next.name || next.document_type || next.person_ids),
+          }
+          return next
+        })
+      } catch {
+        patch(id, { reading: 'none' })
+      }
+    })
+    readQueue.current = job.catch(() => {})
+    readJobs.current.set(id, job)
+    return job
+  }
+
+  const addHolderAsPerson = async (it) => {
+    const name = it.found?.holderName
+    if (!name) return
+    try {
+      const person = await createPerson({ workspaceId, display_name: name }).unwrap()
+      patch(it.id, (cur) => ({ person_ids: [...new Set([...cur.person_ids, person.id])], found: { ...cur.found, holderName: null }, touched: { ...cur.touched, people: true } }))
+      toast.success(`${person.display_name || name} added.`)
+    } catch (err) {
+      toast.error(errorMessage(err))
+    }
+  }
+
+  const finishCrop = (file) => {
+    const { itemId, index } = cropping
+    setCropping(null)
+    patch(itemId, (it) => {
+      const files = it.files.map((f, i) => (i === index ? file : f))
+      const previews = it.previews.map((u, i) => {
+        if (i !== index) return u
+        if (u) URL.revokeObjectURL(u)
+        return URL.createObjectURL(file)
+      })
+      return { files, previews, read: null, reading: 'idle' }
+    })
+    // Read again: a cropped page reads better.
+    setTimeout(() => autoRead(itemId), 0)
+  }
 
   const addFiles = (files) => {
     const ok = []
@@ -107,14 +204,23 @@ export function UploadPage() {
     if (!ok.length) return
     const last = itemsRef.current[itemsRef.current.length - 1]
     const defaults = last ? { document_type: presets.document_type, person_ids: last.person_ids, group_ids: last.group_ids, tags: last.tags } : presets
-    setItems((arr) => {
-      if (combine && arr.length === 1 && arr[0].status === 'idle') {
-        const it = arr[0]
-        const merged = [...it.files, ...ok].slice(0, 20)
-        return [{ ...it, files: merged, previews: [...it.previews, ...ok.map((f) => (fileKind(f) === 'image' ? URL.createObjectURL(f) : null))].slice(0, 20) }]
-      }
-      if (combine && arr.length === 0) return [makeItem(ok.slice(0, 20), defaults)]
-      return [...arr, ...ok.map((f) => makeItem([f], defaults))].slice(0, 20)
+    const arr = itemsRef.current
+    let next
+    if (combine && arr.length === 1 && arr[0].status === 'idle') {
+      const it = arr[0]
+      const merged = [...it.files, ...ok].slice(0, 20)
+      next = [{ ...it, files: merged, read: null, reading: 'idle', previews: [...it.previews, ...ok.map((f) => (fileKind(f) === 'image' ? URL.createObjectURL(f) : null))].slice(0, 20) }]
+    } else if (combine && arr.length === 0) {
+      next = [makeItem(ok.slice(0, 20), defaults)]
+    } else {
+      next = [...arr, ...ok.map((f) => makeItem([f], defaults))].slice(0, 20)
+    }
+    itemsRef.current = next
+    setItems(next)
+    // Read the new photos and PDFs to fill in the details.
+    const known = new Set(arr.map((x) => x.id))
+    next.forEach((it) => {
+      if (!known.has(it.id) || it.reading === 'idle') autoRead(it.id)
     })
   }
 
@@ -125,9 +231,17 @@ export function UploadPage() {
 
   const askDuplicate = (item, matches) => new Promise((resolve) => setDup({ item, matches, resolve }))
 
-  async function uploadItem(item) {
+  async function uploadItem(itemIn) {
+    let item = itemIn
     const set = (changes) => patch(item.id, changes)
     try {
+      // Let the reading of the photo finish: it fills in the details and is reused below.
+      const pendingRead = readJobs.current.get(item.id)
+      if (pendingRead && item.reading === 'reading') {
+        set({ statusText: 'Reading the photo...' })
+        await pendingRead.catch(() => null)
+        item = itemsRef.current.find((x) => x.id === item.id) || item
+      }
       set({ status: 'preparing', statusText: STATUS.preparing, error: '' })
       const prepared = []
       for (const f of item.files) {
@@ -227,7 +341,7 @@ export function UploadPage() {
       if (mod?.processDocument && documentId && version?.id) {
         const blobs = uploaded.map((uf, i) => ({ id: uf.id, kind: uf.kind, mime_type: uf.mime_type, page_number: uf.page_number ?? i + 1, blob: prepared[i]?.file }))
         await mod
-          .processDocument({ workspaceId, documentId, versionId: version.id, files: blobs, people, groups, onStatus: (s) => set({ statusText: s }) })
+          .processDocument({ workspaceId, documentId, versionId: version.id, files: blobs, people, groups, alreadyRead: item.read, onStatus: (s) => set({ statusText: s }) })
           .catch(() => null)
         dispatch(documentsApi.util.invalidateTags([{ type: 'Document', id: documentId }, { type: 'Suggestions', id: documentId }, 'Documents']))
       }
@@ -299,10 +413,25 @@ export function UploadPage() {
             return (
               <li key={it.id} className="rounded-2xl border bg-card p-4 shadow-soft">
                 <div className="flex items-start gap-3">
-                  <div className="flex shrink-0 -space-x-6">
+                  <div className={it.files.length > 1 && !locked ? 'flex shrink-0 gap-1.5' : 'flex shrink-0 -space-x-6'}>
                     {it.files.slice(0, 3).map((f, i) => (
                       it.previews[i] ? (
-                        <img key={i} src={it.previews[i]} alt="" className="size-16 rounded-xl border-2 border-card bg-muted object-cover" />
+                        locked ? (
+                          <img key={i} src={it.previews[i]} alt="" className="size-16 rounded-xl border-2 border-card bg-muted object-cover" />
+                        ) : (
+                          <button
+                            key={i}
+                            type="button"
+                            aria-label={`Crop photo ${i + 1}`}
+                            onClick={() => setCropping({ itemId: it.id, index: i })}
+                            className="relative size-16 overflow-hidden rounded-xl border-2 border-card bg-muted"
+                          >
+                            <img src={it.previews[i]} alt="" className="size-full object-cover" />
+                            <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 bg-black/55 py-0.5 text-[10px] font-semibold text-white">
+                              <Crop className="size-3" /> Crop
+                            </span>
+                          </button>
+                        )
                       ) : (
                         <span key={i} className="flex size-16 items-center justify-center rounded-xl border-2 border-card bg-muted"><DocumentTypeIcon type={it.document_type} size="sm" className="bg-transparent" /></span>
                       )
@@ -323,23 +452,42 @@ export function UploadPage() {
 
                 {it.status === 'idle' || it.status === 'failed' || it.status === 'cancelled' ? (
                   <div className="mt-4 grid gap-4">
+                    {it.reading === 'reading' && (
+                      <p className="flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">
+                        <Spinner size="sm" /> Reading the {fileKind(it.files[0]) === 'pdf' ? 'PDF' : 'photo'} to fill in the details…
+                      </p>
+                    )}
+                    {it.reading === 'done' && it.found && (it.found.filled || it.found.holderName) && (
+                      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-sm">
+                        <Sparkles className="size-4 shrink-0 text-primary" />
+                        <span className="min-w-0 flex-1">
+                          {it.found.filled ? 'Filled in from the text on the page. Check and change anything.' : 'Found a name on the page.'}
+                          {it.found.type && <span className="text-muted-foreground"> Looks like: {typeLabel(it.found.type)}.</span>}
+                        </span>
+                        {it.found.holderName && (
+                          <Button size="sm" variant="outline" onClick={() => addHolderAsPerson(it)}>
+                            <UserPlus /> Add {it.found.holderName}
+                          </Button>
+                        )}
+                      </div>
+                    )}
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="grid gap-1.5">
                         <Label htmlFor={`name-${it.id}`}>Name</Label>
-                        <Input id={`name-${it.id}`} value={it.name} onChange={(e) => patch(it.id, { name: e.target.value })} placeholder="Give it a name" />
+                        <Input id={`name-${it.id}`} value={it.name} onChange={(e) => edit(it.id, 'name', { name: e.target.value })} placeholder="Give it a name" />
                       </div>
                       <div className="grid gap-1.5">
                         <Label>Type</Label>
-                        <DocumentTypeSelect value={it.document_type} onChange={(v) => patch(it.id, { document_type: v })} />
+                        <DocumentTypeSelect value={it.document_type} onChange={(v) => edit(it.id, 'type', { document_type: v })} />
                       </div>
                     </div>
                     <div className="grid gap-1.5">
                       <Label>{t.person_label_plural}</Label>
-                      <PeoplePicker value={it.person_ids} onChange={(ids) => patch(it.id, { person_ids: ids })} />
+                      <PeoplePicker value={it.person_ids} onChange={(ids) => edit(it.id, 'people', { person_ids: ids })} />
                     </div>
                     <div className="grid gap-1.5">
                       <Label>{t.group_label_plural}</Label>
-                      <GroupPicker value={it.group_ids} onChange={(ids) => patch(it.id, { group_ids: ids })} />
+                      <GroupPicker value={it.group_ids} onChange={(ids) => edit(it.id, 'groups', { group_ids: ids })} />
                     </div>
                     <div className="grid gap-1.5">
                       <Label>Tags</Label>
@@ -390,6 +538,13 @@ export function UploadPage() {
           )}
         </div>
       )}
+
+      {cropping && (() => {
+        const it = items.find((x) => x.id === cropping.itemId)
+        const file = it?.files[cropping.index]
+        if (!file) return null
+        return <ImageCropper key={`${cropping.itemId}:${cropping.index}`} file={file} onDone={finishCrop} onCancel={() => setCropping(null)} />
+      })()}
 
       <DuplicateDialog
         open={!!dup}

@@ -1,5 +1,6 @@
 import {
   Home,
+  Compass,
   Search,
   Plus,
   FileText,
@@ -20,7 +21,7 @@ export function primaryNav(t) {
     { to: '', label: 'Home', icon: Home, end: true },
     { to: 'documents', label: 'Documents', icon: FileText },
     { to: 'add', label: 'Add', icon: Plus, primary: true },
-    { to: 'search', label: 'Search', icon: Search },
+    { to: 'explore', label: 'Explore', icon: Compass },
     { to: 'more', label: 'More', icon: MoreHorizontal, more: true },
   ].map((i) => ({ ...i, t }))
 }
@@ -28,6 +29,7 @@ export function primaryNav(t) {
 /** Everything shown in the sidebar (desktop) and the More sheet (mobile). */
 export function secondaryNav(t) {
   return [
+    { to: 'search', label: 'Search', icon: Search },
     { to: 'people', label: t.person_label_plural, icon: Users },
     { to: 'groups', label: t.group_label_plural, icon: FolderTree },
     { to: 'albums', label: 'Albums', icon: Images },

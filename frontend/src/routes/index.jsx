@@ -29,6 +29,7 @@ const DocumentEditPage = lazy(() => import('@/pages/DocumentEdit/DocumentEditPag
 const NewWrittenDocumentPage = lazy(() => import('@/pages/DocumentEdit/NewWrittenDocumentPage').then((m) => ({ default: m.NewWrittenDocumentPage })))
 const UploadPage = lazy(() => import('@/pages/Upload/UploadPage').then((m) => ({ default: m.UploadPage })))
 const ScannerPage = lazy(() => import('@/pages/Scanner/ScannerPage').then((m) => ({ default: m.ScannerPage })))
+const ExplorePage = lazy(() => import('@/pages/Explore/ExplorePage').then((m) => ({ default: m.ExplorePage })))
 const SearchPage = lazy(() => import('@/pages/Search/SearchPage').then((m) => ({ default: m.SearchPage })))
 const AlbumsPage = lazy(() => import('@/pages/Albums/AlbumsPage').then((m) => ({ default: m.AlbumsPage })))
 const AlbumPage = lazy(() => import('@/pages/Albums/AlbumPage').then((m) => ({ default: m.AlbumPage })))
@@ -68,6 +69,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <HomePage /> },
           { path: 'search', element: L(SearchPage) },
+          { path: 'explore', element: L(ExplorePage) },
           { path: 'scan', element: L(ScannerPage) },
           { path: 'upload', element: L(UploadPage) },
           { path: 'documents', element: L(DocumentsPage) },

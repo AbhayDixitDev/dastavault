@@ -9,6 +9,8 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // In-app updates (AppUpdaterPlugin.java).
         registerPlugin(AppUpdaterPlugin.class);
+        // Save, open and share document files (FilesPlugin.java).
+        registerPlugin(FilesPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

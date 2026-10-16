@@ -2,6 +2,7 @@ import { Link, Navigate } from 'react-router-dom'
 import { motion } from 'motion/react'
 import { ScanLine, Search, KeyRound, StickyNote, ShieldCheck, WifiOff, Sparkles, Users } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { isNativeApp } from '@/lib/authRedirect'
 import { Logo } from '@/components/common/Logo'
 import { Button } from '@/components/ui/button'
 
@@ -19,6 +20,8 @@ const FEATURES = [
 export function LandingPage() {
   const { isSignedIn } = useAuth()
   if (isSignedIn) return <Navigate to="/w" replace />
+  // The Android app has no marketing page: it opens on sign-in.
+  if (isNativeApp()) return <Navigate to="/login" replace />
 
   return (
     <div className="min-h-svh bg-background">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowLeft, Share2, Pencil, Upload, MoreHorizontal, Trash2, Download, MessageSquare, GitCompare } from 'lucide-react'
+import { ArrowLeft, Share2, Pencil, Upload, MoreHorizontal, Trash2, Download, MessageSquare, GitCompare, ExternalLink, Send } from 'lucide-react'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useIsDesktop } from '@/hooks/useMediaQuery'
 import { useGetDocumentQuery, useDeleteDocumentMutation, useRestoreDocumentMutation, useGetVersionsQuery } from '@/store/api/documentsApi'
@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ErrorBox, errorMessage } from '@/components/common/ErrorBox'
 import { DocumentViewer, describeVersionFiles } from '@/components/viewer/DocumentViewer'
-import { getSignedUrl } from '@/services/files/signedUrls'
+import { openStoredFile, saveStoredFile } from '@/lib/nativeFiles'
 import { DetailsPanel } from './DetailsPanel'
 import { VersionsSection } from './VersionsSection'
 import { TimelineSection } from './TimelineSection'
@@ -96,10 +96,12 @@ export function DocumentDetailPage() {
   const download = async () => {
     const info = describeVersionFiles(doc?.files, viewVersionId ?? doc?.current_version_id)
     if (!info.download) return
-    const url = await getSignedUrl(workspaceId, info.download.id, { download: true })
-    if (url) window.open(url, '_blank', 'noopener')
-    else toast.error('Could not get the file right now.')
+    await saveStoredFile(workspaceId, info.download)
   }
+
+  const currentFile = () => describeVersionFiles(doc?.files, viewVersionId ?? doc?.current_version_id).download
+  const openWith = () => openStoredFile(workspaceId, currentFile())
+  const sendFile = () => openStoredFile(workspaceId, currentFile(), { share: true })
 
   if (isLoading) {
     return (
@@ -126,6 +128,8 @@ export function DocumentDetailPage() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={download}><Download /> Download</DropdownMenuItem>
+        <DropdownMenuItem onClick={openWith}><ExternalLink /> Open with another app</DropdownMenuItem>
+        <DropdownMenuItem onClick={sendFile}><Send /> Send file (WhatsApp, mail…)</DropdownMenuItem>
         {versions.length > 1 && <DropdownMenuItem onClick={() => setCompareOpen(true)}><GitCompare /> Compare versions</DropdownMenuItem>}
         {canEdit && (
           <>

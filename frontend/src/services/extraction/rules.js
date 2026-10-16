@@ -264,6 +264,46 @@ export function matchPeople(text, people = []) {
   return best
 }
 
+const NAME_LABEL = /^\s*(?:(?:full|holder'?s?|candidate'?s?|student'?s?|patient'?s?|applicant'?s?|card ?holder|account ?holder|insured)\s+)?name(?:\s+of\s+\w+)?\s*[:.\-/]?\s*(.*)$/i
+const NOT_A_NAME = /\b(father|mother|husband|wife|guardian|son|daughter|bank|branch|company|school|college|hospital|address|signature|nominee|of the|government|india|card|number|date|dob|birth)\b/i
+
+function looksLikeName(value) {
+  const v = String(value || '').replace(/[^A-Za-z .']/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/^(mr|mrs|ms|miss|dr|shri|smt|sri|kumari|master)\.?\s+/i, '')
+  if (v.length < 3 || v.length > 40 || NOT_A_NAME.test(v)) return null
+  const words = v.split(' ').filter((w) => w.replace(/\./g, '').length >= 1)
+  if (words.length < 1 || words.length > 5) return null
+  if (!words.some((w) => w.replace(/\./g, '').length >= 3)) return null
+  return words.map((w) => (w.length > 1 ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.toUpperCase())).join(' ')
+}
+
+/**
+ * The name of the person a document belongs to, read from labels such as
+ * "Name: RAHUL PATEL" (or the value on the next line), and from ID cards
+ * where the name stands right above the date of birth line.
+ * @returns {{ value: string, confidence: number } | null}
+ */
+export function findHolderName(text) {
+  const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(NAME_LABEL)
+    if (!m) continue
+    const same = looksLikeName(m[1])
+    if (same) return { value: same, confidence: 0.75 }
+    const next = looksLikeName(lines[i + 1])
+    if (!m[1].trim() && next) return { value: next, confidence: 0.65 }
+  }
+  // Aadhaar, PAN and similar cards: NAME, then "DOB" / "Year of Birth".
+  for (let i = 1; i < lines.length; i++) {
+    if (/\b(dob|date of birth|year of birth|जन्म)/i.test(lines[i])) {
+      const above = looksLikeName(lines[i - 1])
+      if (above && lines[i - 1] === lines[i - 1].toUpperCase()) return { value: above, confidence: 0.55 }
+      if (above) return { value: above, confidence: 0.45 }
+    }
+  }
+  return null
+}
+
 export function matchGroups(text, groups = []) {
   const norm = ` ${normalise(text)} `
   let best = null
@@ -356,6 +396,8 @@ export function extractSuggestions(text, options) {
       add('person_name', person.person.display_name, confidence)
       if (person.person.id) add('person_id', person.person.id, confidence)
     }
+    const holder = findHolderName(src)
+    if (holder) add('holder_name', holder.value, holder.confidence)
     const group = matchGroups(src, groups)
     if (group?.group?.id) add('group_id', group.group.id, group.confidence)
 
@@ -393,6 +435,7 @@ export function suggestDocumentName(args) {
       const p = pid && (people || []).find((x) => x.id === pid)
       if (p) person = p.display_name
     }
+    if (!person) person = valueOf(suggestions, 'holder_name')
     const type = valueOf(suggestions, 'document_type')
     const typeName = type ? (DOCUMENT_TYPE_LABELS[type] || typeLabel(type)) : null
     const org = valueOf(suggestions, 'organisation')
@@ -400,7 +443,9 @@ export function suggestDocumentName(args) {
     const date = valueOf(suggestions, 'issue_date') || valueOf(suggestions, 'expiry_date')
     const year = date && /^\d{4}/.test(date) ? date.slice(0, 4) : null
 
-    const middle = org && org.length <= 40 ? org : identifier
+    // The issuer of an ID card ("Government of India") says nothing about the document.
+    const usefulOrg = org && org.length <= 40 && !/\b(government|govt|department|authority|of india|republic)\b/i.test(org) ? org : null
+    const middle = usefulOrg || identifier
     const parts = [person, typeName, middle, year].filter((p) => p && String(p).trim())
     if (!parts.length) return fallbackName || ''
     let name = parts.map((p) => String(p).trim()).join(' - ')
