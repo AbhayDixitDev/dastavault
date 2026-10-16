@@ -65,6 +65,28 @@ jobs:
             echo "::warning::Could not create the R2 bucket. Enable R2 once in the Cloudflare dashboard (R2 Object Storage -> Enable) and run again."
           fi
 
+      - name: workers.dev subdomain
+        # Registers a subdomain on the first deploy (the dashboard does the same
+        # in Workers & Pages -> onboarding).
+        run: |
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
+          current=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$API" | python3 -c "import json,sys;print((json.load(sys.stdin).get('result') or {}).get('subdomain') or '')")
+          if [ -n "$current" ]; then
+            echo "Subdomain: $current.workers.dev"
+            exit 0
+          fi
+          for name in dastavault dastavault-app dastavault-$(date +%y%m%d) dastavault-$RANDOM; do
+            answer=$(curl -s -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+              --data "{\"subdomain\":\"$name\"}" "$API")
+            if echo "$answer" | grep -q '"success":true'; then
+              echo "Registered $name.workers.dev"
+              exit 0
+            fi
+            echo "$name not possible: $answer"
+          done
+          echo "::error::Could not register a workers.dev subdomain. Open Workers & Pages in the Cloudflare dashboard once and pick one."
+          exit 1
+
       - name: Deploy
         id: deploy
         working-directory: worker
