@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { authRedirectUrl } from '@/lib/authRedirect'
 import { useAuth } from '@/hooks/useAuth'
 import { AuthLayout } from './AuthLayout'
 import { Button } from '@/components/ui/button'
@@ -50,7 +51,7 @@ export function LoginPage() {
     }
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/w` },
+      options: { emailRedirectTo: authRedirectUrl('/w') },
     })
     if (error) toast.error(error.message)
     else setMagicSent(true)

@@ -44,8 +44,10 @@ version cannot be installed over it (uninstall first).
 
 - The Worker accepts requests from the app's origin `https://localhost` (see `worker/src/index.js`); deploy the
   Worker after updating.
-- Sign-in with email and password works in the app. Google sign-in does not work inside an app's web view
-  (Google blocks it); use email and password or a magic link in the app.
+- Sign-in links (confirm email, magic link, password reset, Google) come back to the app as
+  `com.dastavault.app://auth/...`. Supabase only sends users there when it is allowed: Supabase dashboard ->
+  **Authentication -> URL Configuration -> Redirect URLs -> Add URL** -> `com.dastavault.app://**`.
+  Without it, Supabase falls back to the Site URL (by default `http://localhost:3000`).
 
 ## Build on your computer
 

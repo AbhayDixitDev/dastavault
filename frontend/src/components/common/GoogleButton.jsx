@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { authRedirectUrl } from '@/lib/authRedirect'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 
@@ -28,7 +29,7 @@ export function GoogleButton({ label = 'Continue with Google', redirectTo = '/w'
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}${redirectTo}`,
+        redirectTo: authRedirectUrl(redirectTo),
         queryParams: { access_type: 'offline', prompt: 'select_account' },
       },
     })

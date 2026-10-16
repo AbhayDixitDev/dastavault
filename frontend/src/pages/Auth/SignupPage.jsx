@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import { MailCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { authRedirectUrl } from '@/lib/authRedirect'
 import { useAuth } from '@/hooks/useAuth'
 import { AuthLayout } from './AuthLayout'
 import { Button } from '@/components/ui/button'
@@ -41,7 +42,7 @@ export function SignupPage() {
       password,
       options: {
         data: { display_name: name },
-        emailRedirectTo: `${window.location.origin}/verify`,
+        emailRedirectTo: authRedirectUrl('/verify'),
       },
     })
     if (error) {
