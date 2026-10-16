@@ -23,3 +23,7 @@ npm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Exception: the Android release key, kept here at the owner's request
+# (mobile/android/release/release.properties).
+!mobile/android/release/dastavault-release.jks

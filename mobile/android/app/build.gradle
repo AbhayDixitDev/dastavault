@@ -21,6 +21,12 @@ android {
     // GitHub secrets of the release workflow). Updates only install over an
     // installed app that was signed with the same key.
     def keystorePath = System.getenv('DV_KEYSTORE_FILE')
+    // Without the secrets, the release key kept in mobile/android/release is used.
+    def bundled = new Properties()
+    def bundledFile = rootProject.file('release/release.properties')
+    if (!keystorePath && bundledFile.exists()) {
+        bundledFile.withInputStream { bundled.load(it) }
+    }
     signingConfigs {
         release {
             if (keystorePath) {
@@ -28,12 +34,17 @@ android {
                 storePassword System.getenv('DV_KEYSTORE_PASSWORD')
                 keyAlias System.getenv('DV_KEY_ALIAS')
                 keyPassword System.getenv('DV_KEY_PASSWORD')
+            } else if (bundled['storeFile']) {
+                storeFile file(bundled['storeFile'])
+                storePassword bundled['storePassword']
+                keyAlias bundled['keyAlias']
+                keyPassword bundled['keyPassword']
             }
         }
     }
     buildTypes {
         release {
-            signingConfig keystorePath ? signingConfigs.release : signingConfigs.debug
+            signingConfig((keystorePath || bundled['storeFile']) ? signingConfigs.release : signingConfigs.debug)
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

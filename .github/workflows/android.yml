@@ -100,7 +100,7 @@ jobs:
             echo "$DV_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "DV_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
           else
-            echo "::warning::No signing key secrets: the APK is signed with a temporary key. Later versions signed with a different key cannot update it."
+            echo "Signing with the release key in mobile/android/release"
           fi
 
       - name: Build the APK
@@ -117,6 +117,36 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/DastaVault-${{ steps.version.outputs.version }}.apk"
           APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
           $APKSIGNER verify --print-certs "$GITHUB_WORKSPACE/DastaVault-${{ steps.version.outputs.version }}.apk" | grep -E "DN|SHA-256"
+
+      - name: Publish for in-app updates
+        # The app reads latest.json from this public Supabase Storage bucket
+        # (frontend/src/components/common/AppUpdate.jsx), also before sign-in.
+        if: github.event.inputs.test_build != 'true'
+        env:
+          SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VERSION: ${{ steps.version.outputs.version }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          if [ -z "$SERVICE_ROLE" ]; then
+            echo "::warning::SUPABASE_SERVICE_ROLE_KEY is missing: in-app updates are not published."
+            exit 0
+          fi
+          BASE="${VITE_SUPABASE_URL%/}/storage/v1"
+          AUTH=(-H "Authorization: Bearer $SERVICE_ROLE" -H "apikey: $SERVICE_ROLE")
+          curl -s -X POST "$BASE/bucket" "${AUTH[@]}" -H "Content-Type: application/json" \
+            --data '{"id":"app-releases","name":"app-releases","public":true}' || true
+          echo
+          APK="DastaVault-$VERSION.apk"
+          curl -fsS -X POST "$BASE/object/app-releases/android/$APK" "${AUTH[@]}" \
+            -H "Content-Type: application/vnd.android.package-archive" -H "x-upsert: true" --data-binary "@$APK"
+          echo
+          SIZE=$(stat -c %s "$APK")
+          printf '{"version":"%s","versionCode":%s,"apkUrl":"%s","size":%s}\n' \
+            "$VERSION" "$CODE" "$BASE/object/public/app-releases/android/$APK" "$SIZE" > latest.json
+          cat latest.json
+          curl -fsS -X POST "$BASE/object/app-releases/android/latest.json" "${AUTH[@]}" \
+            -H "Content-Type: application/json" -H "Cache-Control: no-cache" -H "x-upsert: true" --data-binary @latest.json
+          echo
 
       - uses: actions/upload-artifact@v4
         with:

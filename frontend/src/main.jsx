@@ -6,6 +6,7 @@ import { store } from '@/store'
 import { router } from '@/routes'
 import { AuthListener } from '@/components/common/AuthListener'
 import { ThemeManager } from '@/components/common/ThemeManager'
+import { AppUpdate } from '@/components/common/AppUpdate'
 import { Toaster } from '@/components/ui/sonner'
 import './index.css'
 
@@ -15,6 +16,7 @@ createRoot(document.getElementById('root')).render(
       <ThemeManager />
       <AuthListener />
       <RouterProvider router={router} />
+      <AppUpdate />
       <Toaster position="top-center" richColors closeButton />
     </Provider>
   </StrictMode>,

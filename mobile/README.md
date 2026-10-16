@@ -9,6 +9,16 @@ The app follows the phone's light or dark mode, and the theme button in the top 
 
 Open the [releases](../../../releases) of this repository and download `DastaVault-<version>.apk`.
 
+## Updates inside the app
+
+The app looks for a new version when it starts (also before sign-in) and every 6 hours. When one is out, it
+downloads it and opens Android's installer; the user taps **Install** and keeps all data.
+
+The release workflow publishes every version for this to the public Supabase Storage bucket `app-releases`
+(`android/latest.json` plus the APK). Updates only install when the new APK is signed with the same key as the
+installed app: the release key in `mobile/android/release` (from 1.0.3 on). Keep it and never replace it.
+Versions up to 1.0.2 had a temporary key: uninstall those once and install 1.0.3.
+
 ## Release a new version
 
 GitHub builds and publishes the APK: **Actions → Android APK → Run workflow**, enter the version (e.g. `1.1.0`).
