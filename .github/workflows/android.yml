@@ -34,9 +34,9 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     env:
-      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
-      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
-      VITE_API_URL: ${{ secrets.VITE_API_URL || vars.VITE_API_URL }}
+      SECRET_VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
+      SECRET_VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      SECRET_VITE_API_URL: ${{ secrets.VITE_API_URL || vars.VITE_API_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,15 +51,25 @@ jobs:
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "Version $VERSION (code $CODE)"
 
-      - name: Check the app settings
-        if: github.event.inputs.test_build != 'true'
+      - name: App settings
+        # Repository secrets or variables first, otherwise mobile/app.env.
         run: |
+          set -a
+          . mobile/app.env
+          set +a
           for name in VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY VITE_API_URL; do
-            if [ -z "${!name}" ]; then
-              echo "::error::The secret $name is missing. Add it under Settings -> Secrets and variables -> Actions (same value as for the website). Secrets or variables both work."
+            secret="SECRET_$name"
+            value="${!secret:-${!name}}"
+            if [ "${{ github.event.inputs.test_build }}" = "true" ] && [ -z "$value" ]; then value="https://example.invalid"; fi
+            if [ -z "$value" ]; then
+              echo "::error::$name is missing: add it as a secret or to mobile/app.env."
               exit 1
             fi
+            echo "$name=$value" >> "$GITHUB_ENV"
           done
+          case "$(grep '^VITE_API_URL=' "$GITHUB_ENV" | tail -1)" in
+            *localhost*|*127.0.0.1*) echo "::warning::VITE_API_URL points to localhost, which a phone cannot reach. Use the deployed Worker address." ;;
+          esac
 
       - uses: actions/setup-node@v4
         with:
@@ -68,12 +78,6 @@ jobs:
       - name: Build the web app
         working-directory: frontend
         run: |
-          if [ "${{ github.event.inputs.test_build }}" = "true" ]; then
-            # Placeholder settings: the test build only checks that the APK builds.
-            export VITE_SUPABASE_URL=https://example.supabase.co
-            export VITE_SUPABASE_PUBLISHABLE_KEY=test-build
-            export VITE_API_URL=https://example.workers.dev
-          fi
           npm ci
           npm run build
 
