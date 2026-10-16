@@ -1,0 +1,146 @@
+name: Deploy API (Worker)
+
+# Puts the API (worker/) online on Cloudflare, then builds the Android app
+# against it. Run it from the Actions tab ("Run workflow").
+#
+# Repository secrets (Settings -> Secrets and variables -> Actions):
+#   CLOUDFLARE_API_TOKEN       Cloudflare -> My Profile -> API Tokens -> Create Token
+#                              -> template "Edit Cloudflare Workers" (add "Workers R2
+#                              Storage: Edit" under Account permissions)
+#   CLOUDFLARE_ACCOUNT_ID      Cloudflare dashboard -> Workers & Pages -> Account ID (right side)
+#   SUPABASE_SERVICE_ROLE_KEY  Supabase -> Project Settings -> API Keys -> secret / service_role key
+# Optional:
+#   SUPABASE_JWT_SECRET, BREVO_API_KEY, BREVO_SENDER_EMAIL, BREVO_SENDER_NAME,
+#   FILE_URL_SIGNING_SECRET, VAULT_RECOVERY_SECRET (generated on the first deploy when missing)
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_version:
+        description: 'Version of the Android app built afterwards (empty: no app build)'
+        required: false
+        default: '1.0.1'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the secrets
+        env:
+          SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          missing=0
+          for pair in "CLOUDFLARE_API_TOKEN:$CLOUDFLARE_API_TOKEN" "CLOUDFLARE_ACCOUNT_ID:$CLOUDFLARE_ACCOUNT_ID" "SUPABASE_SERVICE_ROLE_KEY:$SERVICE_ROLE"; do
+            if [ -z "${pair#*:}" ]; then
+              echo "::error::The secret ${pair%%:*} is missing (see the top of .github/workflows/deploy-worker.yml)."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        working-directory: worker
+        run: npm ci
+
+      - name: File storage (R2 bucket)
+        working-directory: worker
+        run: |
+          npx wrangler r2 bucket create document-manager-files 2>&1 | tee r2.log || true
+          if grep -qi "already exists\|already own" r2.log || grep -qi "created" r2.log; then
+            echo "Bucket ready"
+          else
+            echo "::warning::Could not create the R2 bucket. Enable R2 once in the Cloudflare dashboard (R2 Object Storage -> Enable) and run again."
+          fi
+
+      - name: Deploy
+        id: deploy
+        working-directory: worker
+        run: |
+          npx wrangler deploy 2>&1 | tee deploy.log
+          URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          if [ -z "$URL" ]; then
+            echo "::error::No workers.dev address in the deploy output. Open Workers & Pages in the Cloudflare dashboard once to choose a workers.dev subdomain, then run again."
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "API address: $URL"
+
+      - name: Secrets of the Worker
+        working-directory: worker
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
+          FILE_URL_SIGNING_SECRET: ${{ secrets.FILE_URL_SIGNING_SECRET }}
+          VAULT_RECOVERY_SECRET: ${{ secrets.VAULT_RECOVERY_SECRET }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          BREVO_SENDER_EMAIL: ${{ secrets.BREVO_SENDER_EMAIL }}
+          BREVO_SENDER_NAME: ${{ secrets.BREVO_SENDER_NAME }}
+        run: |
+          set -a; . ../mobile/app.env; set +a
+          SUPABASE_URL="${VITE_SUPABASE_URL}"
+          EXISTING=$(npx wrangler secret list 2>/dev/null || echo '[]')
+          put() {
+            printf '%s' "$2" | npx wrangler secret put "$1" > /dev/null
+            echo "Set $1"
+          }
+          put SUPABASE_URL "$SUPABASE_URL"
+          put SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
+          [ -n "$SUPABASE_JWT_SECRET" ] && put SUPABASE_JWT_SECRET "$SUPABASE_JWT_SECRET"
+          # Random secrets: generated once, then kept (changing them later breaks
+          # signed file links and Chaabi PIN recovery).
+          for name in FILE_URL_SIGNING_SECRET VAULT_RECOVERY_SECRET; do
+            value="${!name}"
+            if [ -n "$value" ]; then
+              put "$name" "$value"
+            elif ! echo "$EXISTING" | grep -q "\"$name\""; then
+              put "$name" "$(openssl rand -hex 32)"
+            else
+              echo "Kept $name"
+            fi
+          done
+          [ -n "$BREVO_API_KEY" ] && put BREVO_API_KEY "$BREVO_API_KEY"
+          [ -n "$BREVO_SENDER_EMAIL" ] && put BREVO_SENDER_EMAIL "$BREVO_SENDER_EMAIL"
+          put BREVO_SENDER_NAME "${BREVO_SENDER_NAME:-DastaVault}"
+          echo "Done"
+
+      - name: Check the API
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS "${{ steps.deploy.outputs.url }}/api/v1/health"; then echo; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::The API did not answer the health check yet."
+
+      - name: Point the Android app at the API
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          sed -i "s|^VITE_API_URL=.*|VITE_API_URL=$URL|" mobile/app.env
+          if git diff --quiet; then
+            echo "The app already uses $URL"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -am "Android app: use the deployed API $URL"
+            git push
+          fi
+
+      - name: Build the Android app
+        if: github.event.inputs.app_version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run android.yml --ref "${GITHUB_REF_NAME}" -f version="${{ github.event.inputs.app_version }}"
+          echo "Started the Android build ${{ github.event.inputs.app_version }}"
