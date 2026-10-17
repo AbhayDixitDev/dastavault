@@ -28,6 +28,7 @@ import { TagInput } from '@/components/documents/TagInput'
 import { DuplicateDialog } from '@/components/documents/DuplicateDialog'
 import { ImageCropper } from '@/components/documents/ImageCropper'
 import { typeLabel } from '@/services/extraction/documentTypes'
+import { saveUploadDraft, loadUploadDraft, clearUploadDraft } from '@/services/offline/uploadDraft'
 
 const STATUS = {
   idle: '',
@@ -70,6 +71,22 @@ function makeItem(files, defaults) {
     read: null, // text read from the files before the upload (reused afterwards)
     reading: 'idle', // idle | reading | done | none
     found: null, // { holderName, type, filled } what reading found, shown as hints
+    nameOptions: [], // other names to pick from
+  }
+}
+
+/** An item saved in the upload draft, ready for the page again. */
+function restoreItem(saved) {
+  const base = makeItem(saved.files, {})
+  return {
+    ...base,
+    ...Object.fromEntries(Object.entries(saved).filter(([k, v]) => k !== 'files' && v !== null && v !== undefined)),
+    files: saved.files,
+    previews: base.previews,
+    touched: saved.touched || {},
+    nameOptions: saved.nameOptions || [],
+    reading: saved.read?.ok ? 'done' : 'idle',
+    status: 'idle',
   }
 }
 
@@ -101,6 +118,42 @@ export function UploadPage() {
   lookupRef.current = { people, groups }
   const readQueue = useRef(Promise.resolve())
   const readJobs = useRef(new Map()) // item id -> promise of the reading
+  const [draftLoaded, setDraftLoaded] = useState(false)
+
+  // Unfinished upload from before (app closed, page left): bring it back.
+  useEffect(() => {
+    let alive = true
+    if (!workspaceId) return undefined
+    loadUploadDraft(workspaceId).then((saved) => {
+      if (!alive) return
+      if (saved.length && !itemsRef.current.length) {
+        const restored = saved.map(restoreItem)
+        itemsRef.current = restored
+        setItems(restored)
+        toast(`Your unfinished upload is back (${restored.length} ${restored.length === 1 ? 'document' : 'documents'}).`, {
+          action: { label: 'Discard', onClick: () => discardDraft() },
+          duration: 8000,
+        })
+        restored.forEach((it) => { if (it.reading === 'idle') autoRead(it.id) })
+      }
+      setDraftLoaded(true)
+    })
+    return () => { alive = false }
+  }, [workspaceId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the draft up to date (files and details), a moment after each change.
+  useEffect(() => {
+    if (!draftLoaded) return undefined
+    const t = setTimeout(() => saveUploadDraft(workspaceId, items), 700)
+    return () => clearTimeout(t)
+  }, [items, draftLoaded, workspaceId])
+
+  const discardDraft = () => {
+    itemsRef.current.forEach((it) => it.previews.forEach((u) => u && URL.revokeObjectURL(u)))
+    itemsRef.current = []
+    setItems([])
+    clearUploadDraft(workspaceId)
+  }
 
   useEffect(() => () => itemsRef.current.forEach((it) => it.previews.forEach((u) => u && URL.revokeObjectURL(u))), [])
 
@@ -128,7 +181,7 @@ export function UploadPage() {
       const files = it.files
       patch(id, { reading: 'reading' })
       try {
-        const [{ readDocument }, { extractSuggestions }] = await Promise.all([import('@/services/ocr'), import('@/services/extraction')])
+        const [{ readDocument }, { extractSuggestions, suggestNameVariants }] = await Promise.all([import('@/services/ocr'), import('@/services/extraction')])
         const read = await readDocument({ files: files.map((f, i) => ({ kind: 'original', mime_type: f.type, page_number: i + 1, blob: f })) })
         const now = itemsRef.current.find((x) => x.id === id)
         if (!now || now.files !== files) return // removed or cropped meanwhile; a new reading follows
@@ -140,7 +193,7 @@ export function UploadPage() {
         const found = extractSuggestions(read.text, { people: ppl, groups: grps })
         const get = (k) => found.find((x) => x.key === k)
         patch(id, (cur) => {
-          const next = { reading: 'done', read }
+          const next = { reading: 'done', read, nameOptions: suggestNameVariants({ suggestions: found, people: ppl, fallbackName: cleanFileName(files[0].name) }) }
           const name = get('suggested_name')
           if (name && !cur.touched.name) next.name = name.value
           const type = get('document_type')
@@ -472,9 +525,23 @@ export function UploadPage() {
                       </div>
                     )}
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="grid gap-1.5">
+                      <div className="grid min-w-0 gap-1.5">
                         <Label htmlFor={`name-${it.id}`}>Name</Label>
                         <Input id={`name-${it.id}`} value={it.name} onChange={(e) => edit(it.id, 'name', { name: e.target.value })} placeholder="Give it a name" />
+                        {it.nameOptions?.filter((n) => n !== it.name).length > 0 && (
+                          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pt-0.5 pb-1 [scrollbar-width:none]" aria-label="Other names">
+                            {it.nameOptions.filter((n) => n !== it.name).map((n) => (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() => edit(it.id, 'name', { name: n })}
+                                className="shrink-0 rounded-full border bg-background px-3 py-1 text-xs font-medium hover:border-primary hover:text-primary"
+                              >
+                                {n}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="grid gap-1.5">
                         <Label>Type</Label>
@@ -529,6 +596,9 @@ export function UploadPage() {
           <span className="min-w-0 flex-1 text-sm text-muted-foreground">
             {allDone ? 'All done.' : `${items.length} ${items.length === 1 ? 'document' : 'documents'} · ${formatBytes(totalBytes)}`}
           </span>
+          {!allDone && !running && (
+            <Button size="lg" variant="ghost" onClick={discardDraft}>Clear</Button>
+          )}
           {allDone ? (
             <Button size="lg" asChild><Link to={`/w/${workspaceId}/documents`}><FileText /> Go to documents</Link></Button>
           ) : (

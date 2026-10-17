@@ -459,3 +459,58 @@ export function suggestDocumentName(args) {
     return fallbackName || ''
   }
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function monthYear(iso) {
+  const m = /^(\d{4})-(\d{2})/.exec(iso || '')
+  return m ? `${MONTHS[+m[2] - 1] || ''} ${m[1]}`.trim() : null
+}
+
+/**
+ * Several ways to name the same document, best first, to pick from:
+ * "Rahul Patel - Passport - 2032", "Passport - Rahul Patel", "HDFC Bank - Statement - Sep 2025", ...
+ * suggestNameVariants({ suggestions, people, fallbackName }) -> string[] (max 6, no duplicates)
+ */
+export function suggestNameVariants(args) {
+  const { suggestions = [], people = [], fallbackName = '' } = args && typeof args === 'object' ? args : {}
+  const out = []
+  const push = (...parts) => {
+    const clean = parts.filter((p) => p && String(p).trim()).map((p) => String(p).trim())
+    if (!clean.length) return
+    const name = clean.join(' - ').slice(0, 80).trim()
+    if (!out.some((x) => x.toLowerCase() === name.toLowerCase())) out.push(name)
+  }
+  try {
+    let person = valueOf(suggestions, 'person_name')
+    if (!person) {
+      const pid = valueOf(suggestions, 'person_id')
+      const p = pid && (people || []).find((x) => x.id === pid)
+      if (p) person = p.display_name
+    }
+    if (!person) person = valueOf(suggestions, 'holder_name')
+    const type = valueOf(suggestions, 'document_type')
+    const typeName = type && type !== 'other' ? (DOCUMENT_TYPE_LABELS[type] || typeLabel(type)) : null
+    const orgRaw = valueOf(suggestions, 'vendor') || valueOf(suggestions, 'organisation')
+    const org = orgRaw && orgRaw.length <= 40 && !/\b(government|govt|department|authority|of india|republic)\b/i.test(orgRaw) ? orgRaw : null
+    const identifier = valueOf(suggestions, 'invoice_number') || valueOf(suggestions, 'policy_number') || valueOf(suggestions, 'registration_number') || valueOf(suggestions, 'document_number')
+    const issue = valueOf(suggestions, 'issue_date')
+    const expiry = valueOf(suggestions, 'expiry_date')
+    const year = (issue || expiry || '').slice(0, 4) || null
+    const when = monthYear(issue)
+
+    const best = suggestDocumentName({ suggestions, people, fallbackName: '' })
+    if (best) out.push(best)
+    push(person, typeName)
+    push(typeName, person)
+    if (expiry) push(person, typeName, `valid till ${expiry.slice(0, 4)}`)
+    if (identifier) push(person, typeName, identifier)
+    if (org) push(org, typeName, when || year)
+    if (org && person) push(person, org, typeName)
+    if (when) push(typeName, when)
+    if (fallbackName) push(fallbackName)
+  } catch {
+    if (fallbackName) push(fallbackName)
+  }
+  return out.slice(0, 6)
+}

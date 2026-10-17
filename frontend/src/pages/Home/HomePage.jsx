@@ -16,6 +16,7 @@ import { ExpiryChip } from '@/components/documents/ExpiryChip'
 import { DocumentTypeIcon } from '@/components/documents/DocumentTypeIcon'
 import { DOCUMENT_TYPES } from '@/components/documents/documentTypes'
 import { ContinueScanBanner } from '@/components/scanner/ContinueScanBanner'
+import { ContinueUploadBanner } from '@/components/documents/ContinueUploadBanner'
 import { QuickAddSheet } from '@/components/layout/QuickAddSheet'
 import { initials, displayNameOf } from '@/utils/format'
 import { cn } from '@/lib/utils'
@@ -124,6 +125,7 @@ export function HomePage() {
       </section>
 
       <ContinueScanBanner workspaceId={workspaceId} />
+      <ContinueUploadBanner workspaceId={workspaceId} />
 
       {/* Quick actions */}
       <Panel>
