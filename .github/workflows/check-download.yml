@@ -1,0 +1,28 @@
+name: Check app download
+
+# Downloads the published Android app the way the phone does (update file,
+# then the APK) and checks it: size, version and signing key.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and check
+        run: |
+          set -a; . mobile/app.env; set +a
+          BASE="${VITE_SUPABASE_URL%/}/storage/v1/object/public/app-releases/android"
+          echo "== latest.json"; curl -sS -D - "$BASE/latest.json" -o latest.json | head -20; cat latest.json; echo
+          URL=$(python3 -c "import json;print(json.load(open('latest.json'))['apkUrl'])")
+          echo "== HEAD $URL"; curl -sSI "$URL" | head -20
+          echo "== GET"; curl -sS -o new.apk -w 'http=%{http_code} size=%{size_download} time=%{time_total}\n' "$URL"
+          curl -sS -o old.apk -w 'old http=%{http_code} size=%{size_download}\n' "$BASE/DastaVault-1.1.2.apk"
+          file new.apk old.apk
+          APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
+          AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt | sort -V | tail -1)
+          for f in old.apk new.apk; do
+            echo "== $f"; $APKSIGNER verify --print-certs "$f" | grep -E "SHA-256|DN" || echo "NOT SIGNED / BROKEN"
+            $AAPT dump badging "$f" | head -3 || true
+          done
