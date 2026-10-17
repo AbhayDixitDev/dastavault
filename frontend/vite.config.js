@@ -19,7 +19,7 @@ export default defineConfig({
         name: 'DastaVault',
         short_name: 'DastaVault',
         description: 'Your documents, passwords and notes in one private vault.',
-        theme_color: '#5b4fe6',
+        theme_color: '#2f62b5',
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
@@ -39,7 +39,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         // The text reader (several MB) is loaded only when a photo is read.
-        globIgnores: ['tesseract/**'],
+        globIgnores: ['tesseract/**', 'models/**', 'opencv/**', 'ort/**'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [

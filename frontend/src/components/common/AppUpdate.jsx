@@ -152,7 +152,7 @@ export function AppUpdate() {
   return (
     <div className="safe-bottom fixed inset-x-3 bottom-24 z-[60] mx-auto max-w-md rounded-2xl border bg-card p-4 shadow-lift">
       <div className="flex items-start gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-gradient text-white">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
           <Download className="size-5" />
         </span>
         <div className="min-w-0 flex-1">

@@ -7,12 +7,11 @@ import { PersonDialog } from '@/components/people/PersonDialog'
 import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBox } from '@/components/common/ErrorBox'
-import { initials } from '@/utils/format'
 
 export function PeoplePage() {
   const { workspaceId, terminology: t, can } = useWorkspace()
@@ -65,9 +64,7 @@ export function PeoplePage() {
           {filtered.map((p) => (
             <li key={p.id}>
               <Link to={p.id} className="flex items-center gap-3 rounded-2xl border bg-card p-4 transition-colors hover:bg-accent">
-                <Avatar className="size-12">
-                  <AvatarFallback>{initials(p.display_name)}</AvatarFallback>
-                </Avatar>
+                <PersonAvatar person={p} className="size-12" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.display_name}</span>
                   <span className="block truncate text-xs text-muted-foreground">

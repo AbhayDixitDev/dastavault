@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowUpDown, FileText, LayoutGrid, List, ScanLine, Search, SlidersHorizontal, Trash2, Upload, X } from 'lucide-react'
+import { ArrowUpDown, FileText, LayoutGrid, List, Rows3, ScanLine, Search, SlidersHorizontal, Trash2, Upload, X } from 'lucide-react'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useGetDocumentsQuery, useLazyGetDocumentsQuery, useUpdateDocumentMutation } from '@/store/api/documentsApi'
 import { PageHeader } from '@/components/ui/page-header'
@@ -12,7 +12,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Spinner } from '@/components/ui/spinner'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ErrorBox, errorMessage } from '@/components/common/ErrorBox'
-import { DocumentCard, DocumentCardSkeleton } from '@/components/documents/DocumentCard'
+import { GroupedDocuments, GROUP_BY_OPTIONS } from '@/components/documents/GroupedDocuments'
+import { DocumentCardSkeleton } from '@/components/documents/DocumentCard'
 import { FilterSheet, EMPTY_FILTERS, countActiveFilters } from '@/components/documents/FilterSheet'
 import { SORT_OPTIONS } from '@/components/documents/documentTypes'
 
@@ -56,6 +57,12 @@ export function DocumentsPage() {
   const [sort, setSort] = useState(searchParams.get('sort') ? `${searchParams.get('sort')}:${searchParams.get('order') || 'desc'}` : 'created_at:desc')
   const [filters, setFilters] = useState(() => filtersFromParams(searchParams))
   const [filterOpen, setFilterOpen] = useState(false)
+  const [groupBy, setGroupBy] = useState(() => {
+    try { return localStorage.getItem('dv.documents.groupBy') || 'none' } catch { return 'none' }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('dv.documents.groupBy', groupBy) } catch { /* ignore */ }
+  }, [groupBy])
   const [updateDocument] = useUpdateDocumentMutation()
 
   useEffect(() => {
@@ -86,6 +93,8 @@ export function DocumentsPage() {
     favorite: filters.favorite ? 1 : undefined,
     date_from: filters.date_from || undefined,
     date_to: filters.date_to || undefined,
+    year: filters.year || undefined,
+    expiring_days: filters.expiring_days || undefined,
   }), [workspaceId, dq, sortKey, order, filters])
 
   const { data, isLoading, isFetching, error, refetch } = useGetDocumentsQuery(baseArgs, { skip: !workspaceId })
@@ -177,6 +186,16 @@ export function DocumentsPage() {
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="lg" className="h-10"><Rows3 /> <span className="hidden sm:inline">{GROUP_BY_OPTIONS.find((g) => g.key === groupBy)?.label}</span><span className="sm:hidden">Group</span></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuRadioGroup value={groupBy} onValueChange={setGroupBy}>
+              {GROUP_BY_OPTIONS.map((g) => <DropdownMenuRadioItem key={g.key} value={g.key}>{g.label}</DropdownMenuRadioItem>)}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div className="flex overflow-hidden rounded-md border">
           <button type="button" aria-label="Grid view" aria-pressed={view === 'grid'} onClick={() => setView('grid')} className={`flex h-10 w-10 items-center justify-center ${view === 'grid' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}><LayoutGrid className="size-4" /></button>
           <button type="button" aria-label="List view" aria-pressed={view === 'list'} onClick={() => setView('list')} className={`flex h-10 w-10 items-center justify-center border-l ${view === 'list' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}><List className="size-4" /></button>
@@ -207,11 +226,7 @@ export function DocumentsPage() {
         />
       ) : (
         <>
-          <div className={view === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4' : 'flex flex-col gap-2'}>
-            {documents.map((doc) => (
-              <DocumentCard key={doc.id} document={doc} workspaceId={workspaceId} view={view} onToggleFavourite={canEdit ? toggleFavourite : undefined} />
-            ))}
-          </div>
+          <GroupedDocuments docs={documents} by={groupBy} workspaceId={workspaceId} view={view} onToggleFavourite={canEdit ? toggleFavourite : undefined} />
           <div ref={sentinelRef} className="flex justify-center py-6">
             {(loadingMore || (isFetching && !isLoading)) && <Spinner label="Loading more" />}
             {!loadingMore && cursor && <Button variant="ghost" onClick={loadMore}>Show more</Button>}

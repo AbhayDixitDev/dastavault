@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Check, Plus, Search, X } from 'lucide-react'
+import { Check, Plus, Search, UserPlus, X } from 'lucide-react'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useGetPeopleQuery } from '@/store/api/peopleApi'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { initials } from '@/utils/format'
+import { PersonAvatar } from '@/components/people/PersonAvatar'
+import { PersonDialog } from '@/components/people/PersonDialog'
 import { cn } from '@/lib/utils'
 
 /**
@@ -17,6 +17,7 @@ export function PeoplePicker({ value = [], onChange, disabled, className, compac
   const { data: people = [], isLoading } = useGetPeopleQuery(workspaceId, { skip: !workspaceId })
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
+  const [adding, setAdding] = useState(false)
 
   const selected = useMemo(() => value.map((id) => people.find((p) => p.id === id)).filter(Boolean), [value, people])
   const options = useMemo(() => {
@@ -33,9 +34,7 @@ export function PeoplePicker({ value = [], onChange, disabled, className, compac
     <div className={cn('flex flex-wrap items-center gap-2', className)}>
       {selected.map((p) => (
         <span key={p.id} className="flex items-center gap-1.5 rounded-full border bg-card py-1 pr-2 pl-1 text-sm">
-          <Avatar className="size-6 text-[10px]">
-            <AvatarFallback>{initials(p.display_name)}</AvatarFallback>
-          </Avatar>
+          <PersonAvatar person={p} className="size-6 text-[10px]" />
           <span className="max-w-[10rem] truncate">{p.display_name}</span>
           {!disabled && (
             <button type="button" className="tap-target -m-2 ml-0 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive" aria-label={`Remove ${p.display_name}`} onClick={() => toggle(p.id)}>
@@ -59,8 +58,8 @@ export function PeoplePicker({ value = [], onChange, disabled, className, compac
             <ul className="scroll-inside max-h-64">
               {isLoading && <li className="px-2 py-3 text-sm text-muted-foreground">Loading...</li>}
               {!isLoading && options.length === 0 && (
-                <li className="px-2 py-3 text-sm text-muted-foreground">
-                  {people.length === 0 ? `No ${t.person_label_plural.toLowerCase()} yet. Add them from the ${t.person_label_plural} page.` : 'No match.'}
+                <li className="px-2 py-2 text-sm text-muted-foreground">
+                  {people.length === 0 ? `No ${t.person_label_plural.toLowerCase()} yet.` : 'No match.'}
                 </li>
               )}
               {options.map((p) => {
@@ -68,7 +67,7 @@ export function PeoplePicker({ value = [], onChange, disabled, className, compac
                 return (
                   <li key={p.id}>
                     <button type="button" onClick={() => toggle(p.id)} className={cn('flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-accent', on && 'bg-accent/60')}>
-                      <Avatar className="size-7 text-[11px]"><AvatarFallback>{initials(p.display_name)}</AvatarFallback></Avatar>
+                      <PersonAvatar person={p} className="size-7 text-[11px]" />
                       <span className="min-w-0 flex-1 truncate">{p.display_name}</span>
                       {on && <Check className="size-4 text-primary" />}
                     </button>
@@ -76,9 +75,26 @@ export function PeoplePicker({ value = [], onChange, disabled, className, compac
                 )
               })}
             </ul>
+            {/* Not there yet: add them right here, without leaving the document. */}
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setAdding(true) }}
+              className="mt-1 flex w-full items-center gap-2 rounded-md border-t px-2 pt-3 pb-2 text-left text-sm font-medium text-primary hover:bg-accent"
+            >
+              <UserPlus className="size-4" /> {q.trim() ? `Add “${q.trim()}” as new ${t.person_label.toLowerCase()}` : `Add a new ${t.person_label.toLowerCase()}`}
+            </button>
           </PopoverContent>
         </Popover>
       )}
+      <PersonDialog
+        open={adding}
+        onOpenChange={setAdding}
+        initial={{ display_name: q.trim() }}
+        onSaved={(person) => {
+          if (person?.id && !value.includes(person.id)) onChange?.([...value, person.id])
+          setQ('')
+        }}
+      />
       {disabled && selected.length === 0 && <span className="text-sm text-muted-foreground">Nobody linked</span>}
     </div>
   )

@@ -30,7 +30,7 @@ function say(onStatus, text, extra) {
   try { onStatus?.(text, extra) } catch { /* listener errors are not ours */ }
 }
 
-export async function processDocument({ workspaceId, documentId, versionId, files = [], people = [], groups = [], workspaceKind, lang, onStatus, alreadyRead = null } = {}) {
+export async function processDocument({ workspaceId, documentId, versionId, files = [], people = [], groups = [], workspaceKind, lang, onStatus, alreadyRead = null, alreadyFaces = null, linkFaces = true } = {}) {
   const result = { ok: false, textOk: false, suggestionsOk: false, embeddingsOk: false }
   if (!workspaceId || !documentId) return result
   const base = `/workspaces/${workspaceId}/documents/${documentId}`
@@ -81,6 +81,26 @@ export async function processDocument({ workspaceId, documentId, versionId, file
       if (hash) await api.patch(`${base}`, { perceptual_hash: hash }).catch(() => {})
     }
   } catch { /* optional */ }
+
+  // Faces on the first page (ID cards, photos): kept with the document, for
+  // grouping by face; someone recognised is linked to the document.
+  try {
+    let faces = Array.isArray(alreadyFaces) ? alreadyFaces : null
+    if (!faces) {
+      const page = files.find((f) => f.kind === 'processed' && /^image\//.test(f.mime_type || '') && f.blob)
+        || files.find((f) => (f.kind === 'original' || !f.kind) && /^image\//.test(f.mime_type || f.blob?.type || '') && f.blob)
+      if (page) {
+        const { findFaces, matchPerson } = await import('@/services/faces')
+        faces = (await findFaces(page.blob)).slice(0, 6).map((f) => ({ ...f, person_id: matchPerson(f.d, people)?.person.id ?? null }))
+      }
+    }
+    if (faces) {
+      const fields = { faces: faces.map(({ box, crop, d, person_id }) => ({ box, crop, d, person_id: person_id ?? null })) }
+      const known = linkFaces ? faces.find((f) => f.person_id)?.person_id : null
+      if (known) fields.person_id = known
+      await api.patch(`${base}/metadata`, { fields })
+    }
+  } catch { /* faces are optional */ }
 
   // 3. Chunk + embed
   say(onStatus, STATUS.SEARCHABLE, { step: 'embed' })

@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ScanLine, Upload, PenLine, StickyNote, KeyRound, BellRing, ArrowLeft, ArrowRight, Check, UserRound, Users } from 'lucide-react'
+import { ScanLine, Upload, PenLine, StickyNote, KeyRound, BellRing, ArrowLeft, ArrowRight, Check, UserPlus, UserRound, Users } from 'lucide-react'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useGetPeopleQuery } from '@/store/api/peopleApi'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DOCUMENT_TYPES } from '@/components/documents/documentTypes'
+import { PersonDialog } from '@/components/people/PersonDialog'
 import { initials } from '@/utils/format'
 import { cn } from '@/lib/utils'
 
@@ -33,6 +34,7 @@ export function QuickAddSheet({ open, onOpenChange }) {
   const { data: people = [] } = useGetPeopleQuery(workspaceId, { skip: !workspaceId || !open })
   const [action, setAction] = useState(null)
   const [personId, setPersonId] = useState('')
+  const [addingPerson, setAddingPerson] = useState(false)
   const [type, setType] = useState('')
   const [allTypes, setAllTypes] = useState(false)
 
@@ -119,10 +121,12 @@ export function QuickAddSheet({ open, onOpenChange }) {
                     active={personId === p.id}
                     onClick={() => setPersonId(p.id)}
                     label={p.display_name}
-                    icon={<span className="text-sm font-semibold">{initials(p.display_name)}</span>}
+                    icon={p.custom?.photo ? <img src={p.custom.photo} alt="" className="size-full rounded-full object-cover" /> : <span className="text-sm font-semibold">{initials(p.display_name)}</span>}
                   />
                 ))}
+                <PersonChip active={false} onClick={() => setAddingPerson(true)} label="New" icon={<UserPlus className="size-5" />} />
               </div>
+              <PersonDialog open={addingPerson} onOpenChange={setAddingPerson} onSaved={(p) => p?.id && setPersonId(p.id)} />
               {people.length === 0 && (
                 <p className="text-xs text-muted-foreground">Add {t.person_label_plural?.toLowerCase() ?? 'people'} to file documents under their names.</p>
               )}

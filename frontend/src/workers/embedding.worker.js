@@ -13,8 +13,22 @@ async function getExtractor() {
   if (!extractorPromise) {
     extractorPromise = (async () => {
       const { pipeline, env } = await import('@huggingface/transformers')
-      env.allowLocalModels = false
+      // The model and the runtime ship with the app (scripts/copy-ocr.mjs);
+      // Hugging Face is only the fallback when the copy is missing.
+      const base = new URL(import.meta.env.BASE_URL || '/', self.location.origin)
+      const shipped = await fetch(new URL('models/search-model.json', base))
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+      env.allowLocalModels = shipped?.local === true
+      env.localModelPath = new URL('models/', base).href
+      env.allowRemoteModels = true
       env.useBrowserCache = true
+      if (env.backends?.onnx?.wasm) {
+        env.backends.onnx.wasm.wasmPaths = {
+          mjs: new URL('ort/ort-wasm-simd-threaded.mjs', base).href,
+          wasm: new URL('ort/ort-wasm-simd-threaded.wasm', base).href,
+        }
+      }
       return pipeline('feature-extraction', MODEL, { dtype: 'q8' })
     })().catch((err) => { extractorPromise = null; throw err })
   }

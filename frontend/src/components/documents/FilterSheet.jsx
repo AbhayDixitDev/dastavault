@@ -17,9 +17,14 @@ export const EMPTY_FILTERS = {
   document_type: '',
   tag: '',
   favorite: false,
+  year: '',
+  expiring_days: '',
   date_from: '',
   date_to: '',
 }
+
+const THIS_YEAR = new Date().getFullYear()
+const YEARS = Array.from({ length: 30 }, (_, i) => String(THIS_YEAR + 1 - i))
 
 export function countActiveFilters(f = {}) {
   return Object.entries(f).filter(([k, v]) => k in EMPTY_FILTERS && v && v !== '').length
@@ -72,6 +77,21 @@ export function FilterSheet({ open, onOpenChange, value, onApply }) {
           <div className="grid gap-1.5">
             <Label>Type</Label>
             <DocumentTypeSelect value={draft.document_type} onChange={(v) => set('document_type', v)} allowAny />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Year</Label>
+              <AnySelect value={draft.year} onChange={(v) => set('year', v)} placeholder="Any year" items={YEARS.map((y) => ({ value: y, label: y }))} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Expiring</Label>
+              <AnySelect
+                value={draft.expiring_days}
+                onChange={(v) => set('expiring_days', v)}
+                placeholder="Any time"
+                items={[{ value: '30', label: 'Within a month' }, { value: '90', label: 'Within 3 months' }, { value: '365', label: 'Within a year' }]}
+              />
+            </div>
           </div>
           <div className="grid gap-1.5">
             <Label>Tag</Label>

@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 public/tesseract
+public/models/face
+public/opencv
+public/ort
+public/models/Xenova
+public/models/search-model.json

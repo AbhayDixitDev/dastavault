@@ -6,7 +6,7 @@
 /* ------------------------------------------------------------------
    DastaVault theme
    Fonts:  Outfit (display / headings) + Plus Jakarta Sans (body)
-   Brand:  deep indigo-violet primary, warm amber accent, teal success
+   Brand:  calm blue primary on neutral greys; colour only where it means something
    ------------------------------------------------------------------ */
 
 :root {
@@ -15,97 +15,97 @@
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-display: "Outfit", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 
-  --background: oklch(0.985 0.008 290);
-  --foreground: oklch(0.2 0.03 285);
+  --background: oklch(0.985 0.006 260);
+  --foreground: oklch(0.2 0.006 260);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.2 0.03 285);
+  --card-foreground: oklch(0.2 0.006 260);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0.03 285);
+  --popover-foreground: oklch(0.2 0.006 260);
 
-  --primary: oklch(0.5 0.24 282);
-  --primary-foreground: oklch(0.99 0.01 282);
-  --secondary: oklch(0.95 0.025 290);
-  --secondary-foreground: oklch(0.3 0.06 285);
-  --muted: oklch(0.955 0.012 290);
-  --muted-foreground: oklch(0.5 0.03 285);
-  --accent: oklch(0.94 0.03 290);
-  --accent-foreground: oklch(0.28 0.08 285);
+  --primary: oklch(0.5 0.14 255);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.95 0.006 260);
+  --secondary-foreground: oklch(0.3 0.006 260);
+  --muted: oklch(0.955 0.006 260);
+  --muted-foreground: oklch(0.5 0.006 260);
+  --accent: oklch(0.94 0.006 260);
+  --accent-foreground: oklch(0.28 0.006 260);
   --destructive: oklch(0.58 0.23 25);
   --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.9 0.015 290);
-  --input: oklch(0.9 0.015 290);
-  --ring: oklch(0.5 0.24 282);
+  --border: oklch(0.9 0.006 260);
+  --input: oklch(0.9 0.006 260);
+  --ring: oklch(0.5 0.14 255);
 
   --brand-amber: oklch(0.8 0.16 75);
   --brand-teal: oklch(0.72 0.14 185);
   --brand-rose: oklch(0.7 0.19 10);
   --brand-violet: oklch(0.62 0.22 300);
 
-  --chart-1: oklch(0.5 0.24 282);
+  --chart-1: oklch(0.5 0.14 255);
   --chart-2: oklch(0.72 0.14 185);
   --chart-3: oklch(0.8 0.16 75);
   --chart-4: oklch(0.7 0.19 10);
   --chart-5: oklch(0.62 0.22 300);
 
-  --sidebar: oklch(0.965 0.02 290);
-  --sidebar-foreground: oklch(0.25 0.04 285);
-  --sidebar-primary: oklch(0.5 0.24 282);
-  --sidebar-primary-foreground: oklch(0.99 0.01 282);
-  --sidebar-accent: oklch(0.91 0.045 288);
+  --sidebar: oklch(0.965 0.006 260);
+  --sidebar-foreground: oklch(0.25 0.006 260);
+  --sidebar-primary: oklch(0.5 0.14 255);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.91 0.006 260);
   --sidebar-accent-foreground: oklch(0.28 0.1 283);
-  --sidebar-border: oklch(0.89 0.02 290);
-  --sidebar-ring: oklch(0.5 0.24 282);
+  --sidebar-border: oklch(0.89 0.006 260);
+  --sidebar-ring: oklch(0.5 0.14 255);
 
-  --scrollbar-thumb: oklch(0.78 0.03 288);
-  --scrollbar-thumb-hover: oklch(0.68 0.05 288);
+  --scrollbar-thumb: oklch(0.78 0.006 260);
+  --scrollbar-thumb-hover: oklch(0.68 0.006 260);
   --scrollbar-track: transparent;
 }
 
 .dark {
   /* Near black for AMOLED screens; cards one step above it. */
-  --background: oklch(0.12 0.012 282);
-  --foreground: oklch(0.96 0.01 290);
-  --card: oklch(0.175 0.02 282);
-  --card-foreground: oklch(0.96 0.01 290);
-  --popover: oklch(0.19 0.022 282);
-  --popover-foreground: oklch(0.96 0.01 290);
+  --background: oklch(0.12 0.006 260);
+  --foreground: oklch(0.96 0.006 260);
+  --card: oklch(0.175 0.006 260);
+  --card-foreground: oklch(0.96 0.006 260);
+  --popover: oklch(0.19 0.006 260);
+  --popover-foreground: oklch(0.96 0.006 260);
 
-  --primary: oklch(0.72 0.18 285);
-  --primary-foreground: oklch(0.15 0.04 282);
-  --secondary: oklch(0.28 0.04 283);
-  --secondary-foreground: oklch(0.96 0.01 290);
-  --muted: oklch(0.27 0.03 283);
-  --muted-foreground: oklch(0.72 0.03 288);
-  --accent: oklch(0.3 0.05 284);
-  --accent-foreground: oklch(0.97 0.01 290);
+  --primary: oklch(0.74 0.11 250);
+  --primary-foreground: oklch(0.16 0.02 255);
+  --secondary: oklch(0.28 0.006 260);
+  --secondary-foreground: oklch(0.96 0.006 260);
+  --muted: oklch(0.27 0.006 260);
+  --muted-foreground: oklch(0.72 0.006 260);
+  --accent: oklch(0.3 0.006 260);
+  --accent-foreground: oklch(0.97 0.006 260);
   --destructive: oklch(0.7 0.2 22);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.72 0.18 285);
+  --ring: oklch(0.74 0.11 250);
 
   --brand-amber: oklch(0.84 0.16 80);
   --brand-teal: oklch(0.78 0.13 185);
   --brand-rose: oklch(0.74 0.17 10);
   --brand-violet: oklch(0.72 0.2 300);
 
-  --chart-1: oklch(0.72 0.18 285);
+  --chart-1: oklch(0.74 0.11 250);
   --chart-2: oklch(0.78 0.13 185);
   --chart-3: oklch(0.84 0.16 80);
   --chart-4: oklch(0.74 0.17 10);
   --chart-5: oklch(0.72 0.2 300);
 
-  --sidebar: oklch(0.15 0.018 282);
-  --sidebar-foreground: oklch(0.93 0.015 290);
-  --sidebar-primary: oklch(0.72 0.18 285);
-  --sidebar-primary-foreground: oklch(0.15 0.04 282);
-  --sidebar-accent: oklch(0.3 0.06 284);
-  --sidebar-accent-foreground: oklch(0.98 0.01 290);
+  --sidebar: oklch(0.15 0.006 260);
+  --sidebar-foreground: oklch(0.93 0.006 260);
+  --sidebar-primary: oklch(0.74 0.11 250);
+  --sidebar-primary-foreground: oklch(0.16 0.02 255);
+  --sidebar-accent: oklch(0.3 0.006 260);
+  --sidebar-accent-foreground: oklch(0.98 0.006 260);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.72 0.18 285);
+  --sidebar-ring: oklch(0.74 0.11 250);
 
-  --scrollbar-thumb: oklch(0.4 0.04 285);
-  --scrollbar-thumb-hover: oklch(0.52 0.05 285);
+  --scrollbar-thumb: oklch(0.4 0.006 260);
+  --scrollbar-thumb-hover: oklch(0.52 0.006 260);
   --scrollbar-track: transparent;
 }
 
@@ -214,11 +214,11 @@
 /* Brand helpers ------------------------------------------------------- */
 
 @utility bg-brand-gradient {
-  background-image: linear-gradient(135deg, oklch(0.5 0.24 282) 0%, oklch(0.6 0.22 300) 55%, oklch(0.68 0.19 330) 100%);
+  background-image: linear-gradient(135deg, oklch(0.5 0.14 255) 0%, oklch(0.6 0.22 300) 55%, oklch(0.68 0.19 330) 100%);
 }
 
 @utility text-brand-gradient {
-  background-image: linear-gradient(120deg, oklch(0.5 0.24 282), oklch(0.62 0.22 300), oklch(0.7 0.18 340));
+  background-image: linear-gradient(120deg, oklch(0.5 0.14 255), oklch(0.62 0.22 300), oklch(0.7 0.18 340));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

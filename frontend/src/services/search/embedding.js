@@ -32,3 +32,17 @@ export async function isMeaningSearchAvailable() {
   const mod = await loadOptional(OPTIONAL.embedding)
   return Boolean(mod && typeof mod.getEmbeddingProvider === 'function')
 }
+
+/**
+ * Loads the meaning model in the background (called when Search opens), so
+ * the first query does not run out of time while the model starts.
+ */
+export async function warmUpSearch() {
+  try {
+    const mod = await loadOptional(OPTIONAL.embedding)
+    const provider = mod?.getEmbeddingProvider?.()
+    await provider?.warmup?.()
+  } catch {
+    /* keyword search still works */
+  }
+}

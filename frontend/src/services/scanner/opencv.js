@@ -5,21 +5,25 @@
  *   await ready()              // rejects when unavailable
  *   isReady()                  // true once loaded
  *
- * The library is ~10 MB, so by default it is fetched on first use from a pinned
- * CDN URL (same version as the installed @techstark/opencv-js package) instead
- * of being bundled; the browser HTTP cache keeps it for later visits.
+ * The library is ~13 MB. It is loaded on first use from the copy that ships with
+ * the app (public/opencv), falling back to a pinned CDN URL (same version as the
+ * installed @techstark/opencv-js package).
  *   VITE_OPENCV_URL=<url>     use another URL (e.g. a self-hosted copy in /public)
  *   VITE_OPENCV_BUNDLED=1     bundle the npm package instead (raise the PWA
  *                             precache limit or ignore the chunk in workbox first)
  */
-import { version as OPENCV_VERSION } from '@techstark/opencv-js/package.json'
+// Same version as the installed @techstark/opencv-js (4.x: runs on older Android WebViews too).
+const OPENCV_VERSION = '4.10.0-release.1'
 
 let cv = null
 let loading = null
 let failed = false
 
 const LOAD_TIMEOUT_MS = 60000
-const DEFAULT_URL = `https://cdn.jsdelivr.net/npm/@techstark/opencv-js@${OPENCV_VERSION}/dist/opencv.js`
+const CDN_URL = `https://cdn.jsdelivr.net/npm/@techstark/opencv-js@${OPENCV_VERSION}/dist/opencv.js`
+// A copy ships with the app (scripts/copy-ocr.mjs -> public/opencv/opencv.js), so finding
+// the paper edges works offline and without a 10 MB download; the CDN is the fallback.
+const LOCAL_URL = `${import.meta.env.BASE_URL || '/'}opencv/opencv.js`
 
 function withTimeout(promise, ms) {
   let timer
@@ -30,15 +34,24 @@ function withTimeout(promise, ms) {
 /** Accepts the module, a promise of it, or a module whose runtime is still starting. */
 async function settle(candidate) {
   let inst = candidate
-  if (inst && typeof inst.then === 'function') inst = await inst
+  // A real Promise (bundled builds) is awaited. The Emscripten module itself is a
+  // "thenable" that resolves to itself, so awaiting it never finishes: wait for
+  // its runtime instead.
+  if (inst instanceof Promise) inst = await inst
   if (inst && !inst.Mat) {
     await new Promise((resolve) => {
-      if (inst.Mat) return resolve()
       const prev = inst.onRuntimeInitialized
       inst.onRuntimeInitialized = () => { try { prev?.() } catch { /* ignore */ } resolve() }
+      const poll = setInterval(() => { if (inst.Mat) { clearInterval(poll); resolve() } }, 50)
     })
   }
   if (!inst || !inst.Mat || typeof inst.matFromImageData !== 'function') throw new Error('unavailable')
+  // Handing a thenable to a Promise makes the Promise wait on it, and this one
+  // resolves to itself: without this, `await getCv()` never returns.
+  if (typeof inst.then === 'function') {
+    try { delete inst.then } catch { /* ignore */ }
+    if (typeof inst.then === 'function') inst.then = undefined
+  }
   return inst
 }
 
@@ -70,7 +83,15 @@ async function load() {
   }
   const g = typeof window !== 'undefined' ? window : globalThis
   if (g.cv && (g.cv.Mat || typeof g.cv.then === 'function')) return settle(g.cv)
-  await loadScript(import.meta.env.VITE_OPENCV_URL || DEFAULT_URL)
+  if (import.meta.env.VITE_OPENCV_URL) {
+    await loadScript(import.meta.env.VITE_OPENCV_URL)
+  } else {
+    try {
+      await loadScript(LOCAL_URL)
+    } catch {
+      await loadScript(CDN_URL)
+    }
+  }
   if (!g.cv) throw new Error('unavailable')
   return settle(g.cv)
 }

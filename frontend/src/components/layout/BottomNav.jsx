@@ -46,7 +46,7 @@ export function BottomNav() {
                     aria-label="Add a document, note or password"
                     className="absolute left-1/2 top-0 flex -translate-x-1/2 -translate-y-5 flex-col items-center"
                   >
-                    <span className="flex size-14 items-center justify-center rounded-2xl bg-brand-gradient text-white shadow-lift ring-4 ring-card transition active:scale-95">
+                    <span className="flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lift ring-4 ring-card transition active:scale-95">
                       <Icon className="size-7" />
                     </span>
                     <span className="mt-1 text-[11px] font-semibold text-primary">{item.label}</span>

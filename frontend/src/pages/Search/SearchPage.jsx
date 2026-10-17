@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowRight, Bookmark, BookmarkPlus, Clock, Hash, ImageIcon, Search, Sparkles, Tag, User, X, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 import { useWorkspace } from '@/hooks/useWorkspace'
@@ -13,7 +13,7 @@ import {
   useCreateSavedSearchMutation,
   useDeleteSavedSearchMutation,
 } from '@/store/api/searchApi'
-import { embedQuery } from '@/services/search/embedding'
+import { embedQuery, warmUpSearch } from '@/services/search/embedding'
 import { voiceLangFor } from '@/services/search/voice'
 import { addRecentSearch, clearRecentSearches, getRecentSearches, getSearchByMeaning, removeRecentSearch, setSearchByMeaning } from '@/services/search/recent'
 import { resolvedChips } from '@/services/search/matched'
@@ -33,6 +33,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ErrorBox, errorMessage } from '@/components/common/ErrorBox'
 import { cn } from '@/lib/utils'
+import { allDocuments } from '@/services/documents/allDocuments'
+import { PersonAvatar } from '@/components/people/PersonAvatar'
+import { DocumentCard } from '@/components/documents/DocumentCard'
 
 function useDebounced(value, ms) {
   const [v, setV] = useState(value)
@@ -110,6 +113,11 @@ export function SearchPage() {
   const [runSearch, { isFetching: fastLoading, error: searchError }] = useLazySearchQuery()
   const [runHybrid] = useHybridSearchMutation()
   const { data: people = [] } = useGetPeopleQuery(workspaceId, { skip: !workspaceId })
+
+  // Start the meaning model now; typing the first words gives it a head start.
+  useEffect(() => {
+    warmUpSearch()
+  }, [])
   const types = useDocumentTypes()
   const { data: saved = [] } = useGetSavedSearchesQuery(workspaceId, { skip: !workspaceId })
   const [deleteSaved] = useDeleteSavedSearchMutation()
@@ -338,9 +346,16 @@ export function SearchPage() {
                   workspaceId={workspaceId}
                   className="[&_button]:size-9"
                   onResults={(res, file) => {
-                    runIdRef.current++
+                    const runId = ++runIdRef.current
                     setMeaningPending(false)
-                    setResults({ ...res, source: 'image', fileName: file?.name })
+                    setResults({ ...res, source: 'image', fileName: file?.name, faces: null })
+                    // A photo of someone: who it is, and the documents with their face.
+                    Promise.all([import('@/services/faces'), allDocuments(workspaceId).catch(() => [])])
+                      .then(([{ searchFaces }, docs]) => searchFaces(file, { people, docs }))
+                      .then((faces) => {
+                        if (runIdRef.current === runId) setResults((r) => (r?.source === 'image' ? { ...r, faces } : r))
+                      })
+                      .catch(() => {})
                   }}
                 />
                 <Button type="submit" size="icon" className="size-9 rounded-xl" aria-label="Search">
@@ -444,6 +459,28 @@ export function SearchPage() {
               {Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-24 rounded-2xl" />
               ))}
+            </div>
+          )}
+
+          {results?.source === 'image' && results.faces && (results.faces.people.length > 0 || results.faces.docs.length > 0) && (
+            <div className="mb-4 rounded-2xl border bg-card p-4">
+              {results.faces.people.map(({ person }) => (
+                <Link key={person.id} to={`/w/${workspaceId}/people/${person.id}`} className="mb-3 flex items-center gap-3">
+                  <PersonAvatar person={person} className="size-12" />
+                  <span>
+                    <span className="block text-xs text-muted-foreground">This looks like</span>
+                    <span className="block font-semibold">{person.display_name}</span>
+                  </span>
+                </Link>
+              ))}
+              {results.faces.docs.length > 0 && (
+                <>
+                  <p className="mb-2 text-sm font-medium">Documents with this face</p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {results.faces.docs.slice(0, 12).map((d) => <DocumentCard key={d.id} document={d} workspaceId={workspaceId} />)}
+                  </div>
+                </>
+              )}
             </div>
           )}
 

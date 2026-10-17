@@ -46,7 +46,7 @@ export function Sidebar() {
         <button
           type="button"
           onClick={() => setAddOpen(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-gradient px-3 py-2.5 text-sm font-semibold text-white shadow-lift transition active:scale-[0.98]"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground shadow-lift transition active:scale-[0.98]"
         >
           <Plus className="size-5" /> Add
         </button>

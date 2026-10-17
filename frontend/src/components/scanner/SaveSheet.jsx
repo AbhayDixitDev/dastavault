@@ -3,6 +3,7 @@ import { Check } from 'lucide-react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PeoplePicker } from '@/components/documents/PeoplePicker'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useGetPeopleQuery } from '@/store/api/peopleApi'
@@ -79,16 +80,10 @@ export function SaveSheet({ open, onOpenChange, defaultName, pageCount = 1, savi
               </Select>
             </div>
 
-            {people.length > 0 && (
-              <div className="space-y-2">
-                <Label>Belongs to</Label>
-                <div className="flex flex-wrap gap-2">
-                  {people.map((p) => (
-                    <Chip key={p.id} active={personIds.includes(p.id)} onClick={() => toggle(personIds, setPersonIds, p.id)}>{p.display_name}</Chip>
-                  ))}
-                </div>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label>Belongs to</Label>
+              <PeoplePicker value={personIds} onChange={setPersonIds} />
+            </div>
 
             {groups.length > 0 && (
               <div className="space-y-2">

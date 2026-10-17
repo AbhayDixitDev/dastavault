@@ -89,7 +89,7 @@ export function CropStep({ image, width, height, corners, suggested, cvAvailable
     ctx.strokeStyle = 'rgba(255,255,255,0.95)'
     ctx.stroke()
     ctx.lineWidth = 1
-    ctx.strokeStyle = 'rgba(91,79,230,0.9)'
+    ctx.strokeStyle = 'rgba(47, 98, 181,0.9)'
     ctx.stroke()
 
     const active = stateRef.current.drag
@@ -97,10 +97,10 @@ export function CropStep({ image, width, height, corners, suggested, cvAvailable
       const isActive = active && active.id === id
       ctx.beginPath()
       ctx.arc(p.x, p.y, kind === 'corner' ? 11 : 8, 0, Math.PI * 2)
-      ctx.fillStyle = isActive ? 'rgb(91,79,230)' : 'rgba(255,255,255,0.95)'
+      ctx.fillStyle = isActive ? 'rgb(47, 98, 181)' : 'rgba(255,255,255,0.95)'
       ctx.fill()
       ctx.lineWidth = 2
-      ctx.strokeStyle = isActive ? '#fff' : 'rgba(91,79,230,0.9)'
+      ctx.strokeStyle = isActive ? '#fff' : 'rgba(47, 98, 181,0.9)'
       ctx.stroke()
     }
     pts.forEach((p, i) => drawHandle(p, 'corner', `c${i}`))
@@ -131,7 +131,7 @@ export function CropStep({ image, width, height, corners, suggested, cvAvailable
       ctx.fillStyle = '#000'
       ctx.fillRect(lx, ly, size, size)
       ctx.drawImage(image, ip.x - src / 2, ip.y - src / 2, src, src, lx, ly, size, size)
-      ctx.strokeStyle = 'rgba(91,79,230,0.95)'
+      ctx.strokeStyle = 'rgba(47, 98, 181,0.95)'
       ctx.lineWidth = 1.5
       ctx.beginPath()
       ctx.moveTo(lx + size / 2, ly)

@@ -39,7 +39,8 @@ export function valueColumns(value) {
     out.value_json = value
   } else {
     out.value_json = value
-    out.value_text = Array.isArray(value) ? value.map(String).join(', ') : null
+    // Lists of plain values stay searchable as text; structured ones (e.g. faces) do not.
+    out.value_text = Array.isArray(value) && value.every((v) => v === null || typeof v !== 'object') ? value.map(String).join(', ') : null
   }
   return out
 }

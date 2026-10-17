@@ -23,6 +23,17 @@ async function listPage(c, { deleted }) {
   if (q.q) query = query.ilike('name', `%${q.q.replace(/[%_,]/g, '')}%`)
   if (q.document_type) query = query.eq('document_type', q.document_type)
   if (q.favorite) query = query.eq('is_favorite', true)
+  if (q.year) {
+    const from = `${q.year}-01-01`
+    const to = `${q.year + 1}-01-01`
+    query = query.or(`and(issue_date.gte.${from},issue_date.lt.${to}),and(issue_date.is.null,created_at.gte.${from},created_at.lt.${to})`)
+  }
+  if (q.expiring_days) {
+    const until = new Date(Date.now() + q.expiring_days * 86400000).toISOString().slice(0, 10)
+    query = query.not('expiry_date', 'is', null).lte('expiry_date', until)
+  }
+  if (q.date_from) query = query.gte('created_at', q.date_from)
+  if (q.date_to) query = query.lt('created_at', `${q.date_to}T23:59:59.999Z`)
   if (q.person_id) {
     const ids = await personDocumentIds(db, m.workspace_id, q.person_id)
     if (!ids.length) return { documents: [], next_cursor: null }

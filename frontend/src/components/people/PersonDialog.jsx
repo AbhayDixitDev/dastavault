@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Camera, ImagePlus, X } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -13,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import { errorMessage } from '@/components/common/ErrorBox'
+import { findFaces, withFace } from '@/services/faces'
 
 const schema = z.object({
   display_name: z.string().min(1, 'Please type a name.'),
@@ -25,8 +27,11 @@ const schema = z.object({
 
 const EMPTY = { display_name: '', relation_label: '', email: '', phone: '', date_of_birth: '', notes: '' }
 
-/** Create or edit a person. Pass `person` to edit. */
-export function PersonDialog({ open, onOpenChange, person, onSaved }) {
+/**
+ * Create or edit a person. Pass `person` to edit.
+ * `initial` prefills a new person: { display_name, face: { crop, d } } (a face found in a document).
+ */
+export function PersonDialog({ open, onOpenChange, person, onSaved, initial }) {
   const { workspaceId, terminology: t } = useWorkspace()
   const [createPerson, { isLoading: creating }] = useCreatePersonMutation()
   const [updatePerson, { isLoading: updating }] = useUpdatePersonMutation()
@@ -35,15 +40,34 @@ export function PersonDialog({ open, onOpenChange, person, onSaved }) {
   const form = useForm({ resolver: zodResolver(schema), defaultValues: EMPTY })
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = form
   const relation = watch('relation_label')
+  const [face, setFace] = useState(null) // { crop, d? } new photo
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const cameraRef = useRef(null)
+  const galleryRef = useRef(null)
+
+  const pickPhoto = async (file) => {
+    if (!file) return
+    setPhotoBusy(true)
+    const [found] = await findFaces(file, { minScore: 0.4 })
+    setPhotoBusy(false)
+    if (found) {
+      setFace({ crop: found.crop, d: found.d })
+    } else {
+      toast.error('No face found in this photo. Try one where the face is clear and facing the camera.')
+    }
+  }
 
   useEffect(() => {
     if (open) {
-      reset(person ? { ...EMPTY, ...Object.fromEntries(Object.entries(person).filter(([k]) => k in EMPTY).map(([k, v]) => [k, v ?? ''])) } : EMPTY)
+      reset(person ? { ...EMPTY, ...Object.fromEntries(Object.entries(person).filter(([k]) => k in EMPTY).map(([k, v]) => [k, v ?? ''])) } : { ...EMPTY, display_name: initial?.display_name || '' })
+      setFace(person ? null : initial?.face || null)
     }
-  }, [open, person, reset])
+  }, [open, person, reset]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const onSubmit = async (values) => {
     const body = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v === '' ? null : v]))
+    // The photo and the face fingerprint are kept with the person, to find them in documents.
+    if (face) body.custom = withFace(person, face)
     try {
       const saved = person
         ? await updatePerson({ workspaceId, personId: person.id, ...body }).unwrap()
@@ -65,6 +89,27 @@ export function PersonDialog({ open, onOpenChange, person, onSaved }) {
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col gap-4">
           <DialogBody className="flex flex-col gap-4 py-1">
+          <div className="flex items-center gap-4">
+            <div className="relative size-20 shrink-0 overflow-hidden rounded-full border bg-muted">
+              {(face?.crop || person?.custom?.photo) ? (
+                <img src={face?.crop || person?.custom?.photo} alt="" className="size-full object-cover" />
+              ) : (
+                <span className="flex size-full items-center justify-center text-muted-foreground"><Camera className="size-7" /></span>
+              )}
+              {photoBusy && <span className="absolute inset-0 flex items-center justify-center bg-black/40"><Spinner className="text-white" /></span>}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">Photo</p>
+              <p className="text-xs text-muted-foreground">With a photo, their face is recognised on ID cards and photos you add.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => cameraRef.current?.click()}><Camera /> Take photo</Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => galleryRef.current?.click()}><ImagePlus /> Choose</Button>
+                {face && <Button type="button" size="sm" variant="ghost" onClick={() => setFace(null)}><X /> Remove</Button>}
+              </div>
+              <input ref={cameraRef} type="file" accept="image/*" capture="user" hidden onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = '' }} />
+              <input ref={galleryRef} type="file" accept="image/*" hidden onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = '' }} />
+            </div>
+          </div>
           <div className="grid gap-2">
             <Label htmlFor="display_name">Name</Label>
             <Input id="display_name" autoFocus {...register('display_name')} />

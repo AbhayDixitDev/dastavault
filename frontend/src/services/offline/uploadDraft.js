@@ -7,7 +7,7 @@ import { db } from './db'
  */
 const keyOf = (workspaceId) => `upload:${workspaceId}`
 
-const KEEP = ['id', 'name', 'document_type', 'person_ids', 'group_ids', 'tags', 'touched', 'read', 'found', 'nameOptions', 'versionOf', 'size']
+const KEEP = ['id', 'name', 'document_type', 'person_ids', 'group_ids', 'tags', 'touched', 'read', 'found', 'nameOptions', 'versionOf', 'size', 'faces']
 
 export async function saveUploadDraft(workspaceId, items) {
   if (!workspaceId) return

@@ -231,7 +231,7 @@ function drawOverlay(overlay, video, rel) {
     else ctx.lineTo(x, y)
   })
   ctx.closePath()
-  ctx.fillStyle = 'rgba(91, 79, 230, 0.18)'
+  ctx.fillStyle = 'rgba(47, 98, 181, 0.18)'
   ctx.fill()
   ctx.lineWidth = 3
   ctx.strokeStyle = 'rgba(160, 150, 255, 0.95)'

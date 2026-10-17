@@ -3,7 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ArrowLeft, Pencil, Trash2, Plus, X, Mail, Phone, Cake, FileText, ScanLine, Upload } from 'lucide-react'
 import { useGetDocumentsQuery } from '@/store/api/documentsApi'
-import { DocumentCard } from '@/components/documents/DocumentCard'
+import { GroupedDocuments, documentYear } from '@/components/documents/GroupedDocuments'
+import { documentTypeLabel } from '@/components/documents/documentTypes'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import {
   useGetPersonQuery,
@@ -16,7 +17,7 @@ import { useGetGroupsQuery } from '@/store/api/groupsApi'
 import { PersonDialog } from '@/components/people/PersonDialog'
 import { RelationshipDialog } from '@/components/people/RelationshipDialog'
 import { Button } from '@/components/ui/button'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -26,7 +27,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ErrorBox, errorMessage } from '@/components/common/ErrorBox'
-import { initials, formatDate } from '@/utils/format'
+import { formatDate } from '@/utils/format'
 import { relationLabel } from '@/constants/relations'
 
 export function PersonPage() {
@@ -35,8 +36,14 @@ export function PersonPage() {
   const { workspaceId, terminology: t, can } = useWorkspace()
   const { data: person, isLoading, error, refetch } = useGetPersonQuery({ workspaceId, personId: id })
   const { data: groups = [] } = useGetGroupsQuery(workspaceId)
-  const { data: docsData, isLoading: docsLoading } = useGetDocumentsQuery({ workspaceId, person_id: id, limit: 8 }, { skip: !workspaceId })
+  const { data: docsData, isLoading: docsLoading } = useGetDocumentsQuery({ workspaceId, person_id: id, limit: 100 }, { skip: !workspaceId })
   const personDocs = docsData?.documents ?? []
+  const [groupBy, setGroupBy] = useState('type')
+  const [typeFilter, setTypeFilter] = useState('')
+  const [yearFilter, setYearFilter] = useState('')
+  const typeCounts = countBy(personDocs, (d) => d.document_type || 'other')
+  const yearCounts = countBy(personDocs, documentYear)
+  const shownDocs = personDocs.filter((d) => (!typeFilter || (d.document_type || 'other') === typeFilter) && (!yearFilter || documentYear(d) === yearFilter))
   const [deletePerson] = useDeletePersonMutation()
   const [removeRelationship] = useRemoveRelationshipMutation()
   const [addToGroup] = useAddPersonToGroupMutation()
@@ -78,9 +85,7 @@ export function PersonPage() {
       </Link>
 
       <div className="flex items-start gap-4">
-        <Avatar className="size-16 text-lg">
-          <AvatarFallback>{initials(person.display_name)}</AvatarFallback>
-        </Avatar>
+        <PersonAvatar person={person} className="size-16 text-lg" />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-2xl font-bold">{person.display_name}</h1>
           <p className="text-sm text-muted-foreground">{person.relation_label || t.person_label}</p>
@@ -204,11 +209,30 @@ export function PersonPage() {
             {docsLoading ? (
               <Skeleton className="h-24 rounded-xl" />
             ) : personDocs.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {personDocs.slice(0, 8).map((d) => (
-                  <DocumentCard key={d.id} document={d} workspaceId={workspaceId} />
-                ))}
-              </div>
+              <>
+                {/* Pick a kind or a year; see them grouped */}
+                <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
+                  <FilterChip active={!typeFilter} onClick={() => setTypeFilter('')}>All {personDocs.length}</FilterChip>
+                  {typeCounts.map(([key, n]) => (
+                    <FilterChip key={key} active={typeFilter === key} onClick={() => setTypeFilter(typeFilter === key ? '' : key)}>{documentTypeLabel(key)} {n}</FilterChip>
+                  ))}
+                </div>
+                {yearCounts.length > 1 && (
+                  <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
+                    <FilterChip active={!yearFilter} onClick={() => setYearFilter('')}>Every year</FilterChip>
+                    {yearCounts.sort((a, b) => b[0].localeCompare(a[0])).map(([key, n]) => (
+                      <FilterChip key={key} active={yearFilter === key} onClick={() => setYearFilter(yearFilter === key ? '' : key)}>{key} · {n}</FilterChip>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Group:</span>
+                  {[['type', 'Type'], ['year', 'Year'], ['none', 'None']].map(([key, label]) => (
+                    <button key={key} type="button" onClick={() => setGroupBy(key)} className={groupBy === key ? 'font-semibold text-foreground underline underline-offset-4' : 'text-muted-foreground'}>{label}</button>
+                  ))}
+                </div>
+                <GroupedDocuments docs={shownDocs} by={groupBy} workspaceId={workspaceId} />
+              </>
             ) : (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <FileText className="size-4" /> No documents for {person.display_name} yet.
@@ -221,5 +245,26 @@ export function PersonPage() {
       <PersonDialog open={editOpen} onOpenChange={setEditOpen} person={person} />
       <RelationshipDialog open={relOpen} onOpenChange={setRelOpen} person={person} />
     </div>
+  )
+}
+
+function countBy(list, keyOf) {
+  const map = new Map()
+  for (const item of list) {
+    const key = keyOf(item)
+    map.set(key, (map.get(key) || 0) + 1)
+  }
+  return [...map.entries()].sort((a, b) => b[1] - a[1])
+}
+
+function FilterChip({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={active ? 'shrink-0 rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background' : 'shrink-0 rounded-full border px-3 py-1 text-xs text-muted-foreground hover:text-foreground'}
+    >
+      {children}
+    </button>
   )
 }

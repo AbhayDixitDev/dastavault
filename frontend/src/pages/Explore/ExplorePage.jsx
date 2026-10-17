@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Building2, CalendarClock, CalendarDays, Copy, ImageOff, Inbox, Search, Users } from 'lucide-react'
+import { ArrowLeft, Building2, CalendarClock, CalendarDays, Copy, ImageOff, Inbox, ScanFace, Search, Users } from 'lucide-react'
 import { useWorkspace } from '@/hooks/useWorkspace'
-import { api } from '@/services/api/client'
+import { loadAllDocuments, rememberedDocuments } from '@/services/documents/allDocuments'
 import { pickThumbnailFile } from '@/services/files'
 import { SignedImage } from '@/components/documents/SignedImage'
 import { DocumentTypeIcon } from '@/components/documents/DocumentTypeIcon'
@@ -11,49 +11,30 @@ import { documentTypeInfo, documentTypeLabel } from '@/components/documents/docu
 import { Skeleton } from '@/components/ui/skeleton'
 import { initials } from '@/utils/format'
 import { cn } from '@/lib/utils'
+import { useGetPeopleQuery } from '@/store/api/peopleApi'
+import { buildFaceGroups, docsWithoutFaceCheck, FaceCollectionView, FaceRow, FaceScanBanner } from './faces'
 
-const PAGE = 100
-const MAX_PAGES = 20 // up to 2000 documents are grouped on the device
 const SIMILAR_MAX_DISTANCE = 10 // of 64 bits: photos of the same paper or card
 
-/* ------------------------------------------------------------ data */
-
-// Last list per workspace, shown at once on the next visit while a fresh one loads.
-const memory = new Map()
-
 function useAllDocuments(workspaceId) {
-  const [state, setState] = useState(() => ({ docs: memory.get(workspaceId) ?? null, loading: !memory.has(workspaceId) }))
+  const [state, setState] = useState(() => ({ docs: rememberedDocuments(workspaceId), loading: !rememberedDocuments(workspaceId) }))
+  const [version, setVersion] = useState(0)
 
   useEffect(() => {
     let alive = true
     if (!workspaceId) return undefined
-    setState({ docs: memory.get(workspaceId) ?? null, loading: !memory.has(workspaceId) })
-    ;(async () => {
-      const all = []
-      let cursor = null
-      try {
-        for (let i = 0; i < MAX_PAGES; i++) {
-          const params = new URLSearchParams({ limit: String(PAGE), sort: 'created_at', order: 'desc' })
-          if (cursor) params.set('cursor', cursor)
-          // eslint-disable-next-line no-await-in-loop
-          const r = await api.get(`/workspaces/${workspaceId}/documents?${params}`)
-          all.push(...(r?.documents ?? []))
-          cursor = r?.next_cursor
-          if (!alive) return
-          // First page on screen right away when nothing is remembered yet.
-          if (i === 0 && !memory.has(workspaceId)) setState({ docs: [...all], loading: Boolean(cursor) })
-          if (!cursor) break
-        }
-        memory.set(workspaceId, all)
-        if (alive) setState({ docs: all, loading: false })
-      } catch {
-        if (alive) setState((s) => ({ docs: s.docs ?? all, loading: false }))
-      }
-    })()
+    const known = rememberedDocuments(workspaceId)
+    setState({ docs: known, loading: !known })
+    loadAllDocuments(workspaceId, {
+      // First page on screen right away when nothing is remembered yet.
+      onFirstPage: (first, more) => { if (alive && !known) setState({ docs: first, loading: more }) },
+    })
+      .then((all) => { if (alive) setState({ docs: all, loading: false }) })
+      .catch(() => { if (alive) setState((s) => ({ docs: s.docs ?? [], loading: false })) })
     return () => { alive = false }
-  }, [workspaceId])
+  }, [workspaceId, version])
 
-  return state
+  return { ...state, reload: () => setVersion((v) => v + 1) }
 }
 
 /* -------------------------------------------------------- grouping */
@@ -230,8 +211,11 @@ export function ExplorePage() {
   const { workspaceId, terminology: t } = useWorkspace()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { docs, loading } = useAllDocuments(workspaceId)
+  const { docs, loading, reload } = useAllDocuments(workspaceId)
+  const { data: people = [] } = useGetPeopleQuery(workspaceId, { skip: !workspaceId })
   const c = useMemo(() => (docs ? buildCollections(docs) : null), [docs])
+  const faceGroups = useMemo(() => (docs ? buildFaceGroups(docs, people) : []), [docs, people])
+  const unscanned = useMemo(() => (docs ? docsWithoutFaceCheck(docs) : []), [docs])
   const base = `/w/${workspaceId}`
   const open = searchParams.get('c') || ''
   const at = (kind, key) => `?c=${kind}:${encodeURIComponent(key)}`
@@ -243,6 +227,21 @@ export function ExplorePage() {
     let view = list?.find((g) => g.key === key)
     if (kind === 'expiring') view = { label: 'Expiring soon', docs: c.expiring }
     if (kind === 'unsorted') view = { label: 'Not sorted yet', docs: c.unsorted }
+    if (kind === 'face') {
+      const group = faceGroups.find((g) => g.key === key)
+      if (group) {
+        return (
+          <FaceCollectionView
+            workspaceId={workspaceId}
+            group={group}
+            people={people}
+            personLabel={t?.person_label?.toLowerCase() || 'person'}
+            onBack={() => setSearchParams({})}
+            onChanged={() => { setSearchParams({}); reload() }}
+          />
+        )
+      }
+    }
     if (view) {
       const title = kind === 'similar' ? 'Look alike' : view.label
       return <CollectionView workspaceId={workspaceId} title={title} docs={view.docs} onBack={() => setSearchParams({})} />
@@ -278,6 +277,13 @@ export function ExplorePage() {
 
       {c && docs.length > 0 && (
         <>
+          {faceGroups.length > 0 && (
+            <Section title="Faces" icon={ScanFace} hint={`${faceGroups.length}`}>
+              <FaceRow groups={faceGroups} to={(g) => at('face', g.key)} />
+            </Section>
+          )}
+          <FaceScanBanner workspaceId={workspaceId} docs={unscanned} people={people} onDone={reload} />
+
           {c.people.length > 0 && (
             <Section title={t?.person_label_plural || 'People'} icon={Users} hint={<Link to={`${base}/people`} className="text-primary">See all</Link>}>
               <Row>

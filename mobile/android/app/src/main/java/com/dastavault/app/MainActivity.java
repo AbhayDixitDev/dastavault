@@ -11,6 +11,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AppUpdaterPlugin.class);
         // Save, open and share document files (FilesPlugin.java).
         registerPlugin(FilesPlugin.class);
+        // Google sign-in inside the app (SignInPlugin.java).
+        registerPlugin(SignInPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

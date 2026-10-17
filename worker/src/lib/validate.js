@@ -169,6 +169,12 @@ export const documentListQuery = paginationQuery.extend({
   group_id: uuid().optional(),
   document_type: z.string().trim().max(60).optional(),
   favorite: z.enum(['1', 'true']).optional(),
+  // Year of the document (its issue date, else when it was added).
+  year: z.coerce.number().int().min(1900).max(2200).optional(),
+  // Expires within this many days (or has expired).
+  expiring_days: z.coerce.number().int().min(1).max(3650).optional(),
+  date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   sort: z.enum(['created_at', 'updated_at', 'name', 'expiry_date']).default('created_at'),
   order: z.enum(['asc', 'desc']).default('desc'),
 })

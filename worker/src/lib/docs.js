@@ -95,11 +95,14 @@ export async function attachSummaries(db, wsId, docs) {
   if (!docs.length) return docs
   const docIds = docs.map((d) => d.id)
   const versionIds = docs.map((d) => d.current_version_id).filter(Boolean)
-  const [files, people, groups] = await Promise.all([
+  const [files, people, groups, faces] = await Promise.all([
     versionIds.length ? loadFiles(db, wsId, docIds, versionIds) : [],
     db.from('document_people').select('document_id, link_type, person:people!person_id(id, display_name, avatar_key)').eq('workspace_id', wsId).in('document_id', docIds),
     db.from('document_groups').select('document_id, group:groups!group_id(id, name, color)').eq('workspace_id', wsId).in('document_id', docIds),
+    // Faces found on the pages (set by the app), for grouping by face.
+    db.from('document_metadata').select('document_id, value_json').eq('workspace_id', wsId).eq('key', 'faces').in('document_id', docIds),
   ])
+  const facesBy = new Map((faces.data || []).map((r) => [r.document_id, Array.isArray(r.value_json) ? r.value_json : []]))
   const filesBy = groupBy(files, 'document_id', publicFile)
   const peopleBy = groupBy(unwrap(people, 'Load document people').filter((r) => r.person), 'document_id', (r) => ({ ...r.person, link_type: r.link_type }))
   const groupsBy = groupBy(unwrap(groups, 'Load document groups').filter((r) => r.group), 'document_id', (r) => r.group)
@@ -107,6 +110,8 @@ export async function attachSummaries(db, wsId, docs) {
     d.files = filesBy.get(d.id) || []
     d.people = peopleBy.get(d.id) || []
     d.groups = groupsBy.get(d.id) || []
+    // null: not looked at yet; []: no faces.
+    d.faces = facesBy.has(d.id) ? facesBy.get(d.id) : null
   }
   return docs
 }

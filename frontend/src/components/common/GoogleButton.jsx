@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { authRedirectUrl } from '@/lib/authRedirect'
+import { authRedirectUrl, isNativeApp } from '@/lib/authRedirect'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 
@@ -26,13 +26,26 @@ export function GoogleButton({ label = 'Continue with Google', redirectTo = '/w'
 
   const signIn = async () => {
     setBusy(true)
-    const { error } = await supabase.auth.signInWithOAuth({
+    const signInTab = isNativeApp() ? window.Capacitor?.Plugins?.SignIn : null
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: authRedirectUrl(redirectTo),
         queryParams: { access_type: 'offline', prompt: 'select_account' },
+        // In the Android app the page opens in a sheet on top of the app instead of the browser.
+        skipBrowserRedirect: Boolean(signInTab),
       },
     })
+    if (!error && signInTab && data?.url) {
+      try {
+        await signInTab.open({ url: data.url })
+      } catch {
+        window.location.href = data.url
+      }
+      // The app link brings the user back (AuthListener); allow another try meanwhile.
+      setTimeout(() => setBusy(false), 4000)
+      return
+    }
     if (error) {
       setBusy(false)
       toast.error(

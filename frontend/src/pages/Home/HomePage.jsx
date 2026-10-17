@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useGetPeopleQuery } from '@/store/api/peopleApi'
 import { useGetGroupsQuery } from '@/store/api/groupsApi'
 import { useGetHomeQuery } from '@/store/api/homeApi'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DocumentCard } from '@/components/documents/DocumentCard'
 import { ExpiryChip } from '@/components/documents/ExpiryChip'
@@ -18,7 +18,7 @@ import { DOCUMENT_TYPES } from '@/components/documents/documentTypes'
 import { ContinueScanBanner } from '@/components/scanner/ContinueScanBanner'
 import { ContinueUploadBanner } from '@/components/documents/ContinueUploadBanner'
 import { QuickAddSheet } from '@/components/layout/QuickAddSheet'
-import { initials, displayNameOf } from '@/utils/format'
+import { displayNameOf } from '@/utils/format'
 import { cn } from '@/lib/utils'
 
 function greetingNow() {
@@ -26,16 +26,16 @@ function greetingNow() {
   return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 }
 
-/** Quick actions, as round coloured icons like in a super app. */
+/** Quick actions. */
 const QUICK_ACTIONS = [
-  { to: 'scan', label: 'Scan', icon: ScanLine, tone: 'from-indigo-500 to-violet-500' },
-  { to: 'upload', label: 'Upload', icon: Upload, tone: 'from-sky-500 to-cyan-500' },
-  { to: 'documents/new', label: 'Write', icon: PenLine, tone: 'from-violet-500 to-fuchsia-500' },
-  { to: 'chaabi', label: 'Passwords', icon: KeyRound, tone: 'from-emerald-500 to-teal-500' },
-  { to: 'notes', label: 'Notes', icon: StickyNote, tone: 'from-amber-500 to-orange-500' },
-  { to: 'reminders', label: 'Reminders', icon: BellRing, tone: 'from-rose-500 to-pink-500' },
-  { to: 'albums', label: 'Albums', icon: Images, tone: 'from-fuchsia-500 to-pink-500' },
-  { to: 'search?tab=ask', label: 'Ask AI', icon: Sparkles, tone: 'from-blue-600 to-indigo-600' },
+  { to: 'scan', label: 'Scan', icon: ScanLine },
+  { to: 'upload', label: 'Upload', icon: Upload },
+  { to: 'documents/new', label: 'Write', icon: PenLine },
+  { to: 'chaabi', label: 'Passwords', icon: KeyRound },
+  { to: 'notes', label: 'Notes', icon: StickyNote },
+  { to: 'reminders', label: 'Reminders', icon: BellRing },
+  { to: 'albums', label: 'Albums', icon: Images },
+  { to: 'search?tab=ask', label: 'Ask AI', icon: Sparkles },
 ]
 
 /** The document types shown as categories on the home screen. */
@@ -45,7 +45,7 @@ function SectionTitle({ title, to, icon: Icon }) {
   return (
     <div className="mb-2 flex items-center justify-between">
       <h2 className="flex items-center gap-2 font-display text-base font-semibold">
-        {Icon && <Icon className="size-4 text-primary" />} {title}
+        {Icon && <Icon className="size-4 text-muted-foreground" />} {title}
       </h2>
       {to && (
         <Link to={to} className="flex items-center text-xs font-semibold text-primary">
@@ -73,15 +73,6 @@ function DocRow({ doc, workspaceId, right }) {
   )
 }
 
-function Stat({ value, label }) {
-  return (
-    <div className="flex-1 rounded-2xl bg-white/15 px-3 py-2 text-center backdrop-blur">
-      <div className="font-display text-lg font-bold leading-tight">{value ?? '–'}</div>
-      <div className="text-[11px] text-white/80">{label}</div>
-    </div>
-  )
-}
-
 export function HomePage() {
   const { workspace, workspaceId, terminology: t } = useWorkspace()
   const { user } = useAuth()
@@ -99,29 +90,20 @@ export function HomePage() {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4">
-      {/* Hero: greeting, search and the numbers that matter */}
-      <section className="relative overflow-hidden rounded-3xl bg-brand-gradient p-5 text-white shadow-lift">
-        <div className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-white/10" />
-        <div className="pointer-events-none absolute -bottom-16 -left-6 size-40 rounded-full bg-white/5" />
-        <p className="text-sm text-white/80">{greeting}</p>
-        <h1 className="font-display text-2xl font-bold">{firstName ? `Hello, ${firstName}` : 'Hello'}</h1>
-        <p className="text-sm text-white/80">{workspace?.name}</p>
-
+      {/* Greeting and search: the main way to find anything */}
+      <section className="pt-1">
+        <p className="text-sm text-muted-foreground">{greeting}{workspace?.name ? ` · ${workspace.name}` : ''}</p>
+        <h1 className="font-display text-2xl font-semibold">{firstName ? `Hello, ${firstName}` : 'Hello'}</h1>
         <Link
           to="search"
-          className="relative mt-4 flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm text-slate-500 shadow-md dark:bg-white/95"
+          className="mt-3 flex items-center gap-3 rounded-2xl border bg-card px-4 py-3.5 text-sm text-muted-foreground shadow-soft transition hover:border-foreground/20"
         >
-          <Search className="size-4 text-indigo-600" />
-          <span className="flex-1 truncate">Search “dad passport”, “electricity bill”...</span>
-          <Mic className="size-4 text-indigo-600" />
-          <ImageIcon className="size-4 text-indigo-600" />
+          <Search className="size-5 shrink-0" />
+          <span className="flex-1 truncate">Search a name, “passport”, a bank, any text…</span>
+          <Mic className="size-5 shrink-0" />
+          <ImageIcon className="size-5 shrink-0" />
         </Link>
-
-        <div className="relative mt-4 flex gap-2">
-          <Stat value={home?.counts?.documents} label="Documents" />
-          <Stat value={people.length} label={t.person_label_plural} />
-          <Stat value={expiring.length} label="Expiring" />
-        </div>
+        <p className="mt-1.5 px-1 text-xs text-muted-foreground">Type, speak, or search with a photo of a person or a document.</p>
       </section>
 
       <ContinueScanBanner workspaceId={workspaceId} />
@@ -134,7 +116,7 @@ export function HomePage() {
             const Icon = a.icon
             return (
               <Link key={a.to} to={a.to} className="flex flex-col items-center gap-1.5 text-center transition active:scale-95">
-                <span className={cn('flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-md', a.tone)}>
+                <span className="flex size-12 items-center justify-center rounded-2xl bg-muted text-foreground/80">
                   <Icon className="size-6" />
                 </span>
                 <span className="text-xs font-medium leading-tight">{a.label}</span>
@@ -144,21 +126,6 @@ export function HomePage() {
         </div>
       </Panel>
 
-      {/* File it in the right place */}
-      <button
-        type="button"
-        onClick={() => setAddOpen(true)}
-        className="flex items-center gap-3 rounded-3xl border border-dashed border-primary/40 bg-primary/5 p-4 text-left transition hover:bg-primary/10"
-      >
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-          <Plus className="size-6" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-semibold">Add a document</span>
-          <span className="block text-xs text-muted-foreground">Pick whose it is and what it is. It is filed in the right place for you.</span>
-        </span>
-        <ChevronRight className="size-5 text-muted-foreground" />
-      </button>
       <QuickAddSheet open={addOpen} onOpenChange={setAddOpen} />
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -190,9 +157,7 @@ export function HomePage() {
           <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
             {people.map((p) => (
               <Link key={p.id} to={`people/${p.id}`} className="flex w-16 shrink-0 flex-col items-center gap-1 text-center">
-                <Avatar className="size-14 ring-2 ring-primary/20">
-                  <AvatarFallback className="bg-primary/10 font-semibold text-primary">{initials(p.display_name)}</AvatarFallback>
-                </Avatar>
+                <PersonAvatar person={p} className="size-14 border" />
                 <span className="w-full truncate text-xs">{p.display_name}</span>
               </Link>
             ))}

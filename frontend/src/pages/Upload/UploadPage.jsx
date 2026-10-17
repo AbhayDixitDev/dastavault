@@ -4,7 +4,9 @@ import { useDispatch } from 'react-redux'
 import { toast } from 'sonner'
 import { ArrowLeft, CheckCircle2, CloudUpload, Copy, Crop, ExternalLink, FileText, Sparkles, UserPlus, WifiOff, X, AlertTriangle } from 'lucide-react'
 import { useWorkspace } from '@/hooks/useWorkspace'
-import { useGetPeopleQuery, useCreatePersonMutation } from '@/store/api/peopleApi'
+import { useGetPeopleQuery, useCreatePersonMutation, useUpdatePersonMutation } from '@/store/api/peopleApi'
+import { withFace } from '@/services/faces'
+import { PersonDialog } from '@/components/people/PersonDialog'
 import { useGetGroupsQuery } from '@/store/api/groupsApi'
 import { documentsApi } from '@/store/api/documentsApi'
 import { api } from '@/services/api/client'
@@ -113,6 +115,7 @@ export function UploadPage() {
   const [dup, setDup] = useState(null) // { item, matches, resolve }
   const [cropping, setCropping] = useState(null) // { itemId, index }
   const [createPerson] = useCreatePersonMutation()
+  const [updatePerson] = useUpdatePersonMutation()
   const itemsRef = useRef(items)
   itemsRef.current = items
   const lookupRef = useRef({ people, groups })
@@ -207,6 +210,38 @@ export function UploadPage() {
    */
   const autoRead = (id) => {
     const job = readQueue.current.then(async () => {
+      await readItem(id)
+      await findItemFaces(id)
+    })
+    readQueue.current = job.catch(() => {})
+    readJobs.current.set(id, job)
+    return job
+  }
+
+  /** Faces on the first photo: recognised people are filled in, others can be added. */
+  const findItemFaces = async (id) => {
+    const it = itemsRef.current.find((x) => x.id === id)
+    const photo = it?.files.find((f) => fileKind(f) === 'image')
+    if (!it || it.status !== 'idle' || !photo) return
+    const files = it.files
+    try {
+      const { findFaces, matchPerson } = await import('@/services/faces')
+      const found = (await findFaces(photo)).slice(0, 6)
+      const now = itemsRef.current.find((x) => x.id === id)
+      if (!now || now.files !== files) return
+      const { people: ppl } = lookupRef.current
+      const faces = found.map((f) => ({ ...f, person_id: matchPerson(f.d, ppl)?.person.id ?? null }))
+      patch(id, (cur) => {
+        const next = { faces }
+        const recognised = [...new Set(faces.map((f) => f.person_id).filter(Boolean))]
+        if (recognised.length && !cur.touched.people) next.person_ids = [...new Set([...cur.person_ids, ...recognised])]
+        return next
+      })
+    } catch { /* faces are optional */ }
+  }
+
+  const readItem = async (id) => {
+    {
       const it = itemsRef.current.find((x) => x.id === id)
       if (!it || it.status !== 'idle' || !it.files.some(readable)) {
         if (it) patch(id, { reading: 'none' })
@@ -248,10 +283,23 @@ export function UploadPage() {
       } catch {
         patch(id, { reading: 'none' })
       }
-    })
-    readQueue.current = job.catch(() => {})
-    readJobs.current.set(id, job)
-    return job
+    }
+  }
+
+  /** Someone on the photo: a new person (photo and face kept), or a person who exists. */
+  const [faceForNew, setFaceForNew] = useState(null) // { itemId, index }
+  const assignFace = async (itemId, index, person) => {
+    const it = itemsRef.current.find((x) => x.id === itemId)
+    const face = it?.faces?.[index]
+    if (!face || !person) return
+    patch(itemId, (cur) => ({
+      faces: cur.faces.map((f, i) => (i === index ? { ...f, person_id: person.id } : f)),
+      person_ids: [...new Set([...cur.person_ids, person.id])],
+      touched: { ...cur.touched, people: true },
+    }))
+    // Remember the face, so they are recognised next time.
+    const full = lookupRef.current.people.find((p) => p.id === person.id) || person
+    updatePerson({ workspaceId, personId: person.id, custom: withFace(full, { d: face.d, crop: full.custom?.photo ? undefined : face.crop }) }).catch(() => {})
   }
 
   const addHolderAsPerson = async (it) => {
@@ -430,7 +478,7 @@ export function UploadPage() {
       if (mod?.processDocument && documentId && version?.id) {
         const blobs = uploaded.map((uf, i) => ({ id: uf.id, kind: uf.kind, mime_type: uf.mime_type, page_number: uf.page_number ?? i + 1, blob: prepared[i]?.file }))
         await mod
-          .processDocument({ workspaceId, documentId, versionId: version.id, files: blobs, people, groups, alreadyRead: item.read, onStatus: (s) => set({ statusText: s }) })
+          .processDocument({ workspaceId, documentId, versionId: version.id, files: blobs, people, groups, alreadyRead: item.read, alreadyFaces: item.faces, linkFaces: false, onStatus: (s) => set({ statusText: s }) })
           .catch(() => null)
         dispatch(documentsApi.util.invalidateTags([{ type: 'Document', id: documentId }, { type: 'Suggestions', id: documentId }, 'Documents']))
       }
@@ -561,6 +609,39 @@ export function UploadPage() {
                         )}
                       </div>
                     )}
+                    {it.faces?.length > 0 && (
+                      <div className="rounded-xl border p-3">
+                        <p className="mb-2 text-sm font-medium">Faces on this photo</p>
+                        <div className="flex flex-wrap gap-3">
+                          {it.faces.map((f, i) => {
+                            const who = people.find((p) => p.id === f.person_id)
+                            return (
+                              <div key={i} className="flex w-28 flex-col items-center gap-1.5 text-center">
+                                <img src={f.crop} alt="" className="size-16 rounded-full border object-cover" />
+                                {who ? (
+                                  <span className="flex items-center gap-1 text-xs font-medium"><CheckCircle2 className="size-3.5 text-emerald-600" /> {who.display_name}</span>
+                                ) : (
+                                  <>
+                                    <button type="button" onClick={() => setFaceForNew({ itemId: it.id, index: i })} className="text-xs font-semibold text-primary">+ New {t.person_label.toLowerCase()}</button>
+                                    {people.length > 0 && (
+                                      <select
+                                        aria-label="This is"
+                                        value=""
+                                        onChange={(e) => assignFace(it.id, i, people.find((p) => p.id === e.target.value))}
+                                        className="w-full rounded-md border bg-background px-1 py-1 text-xs"
+                                      >
+                                        <option value="">This is…</option>
+                                        {people.map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+                                      </select>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="grid min-w-0 gap-1.5">
                         <Label htmlFor={`name-${it.id}`}>Name</Label>
@@ -652,6 +733,27 @@ export function UploadPage() {
         if (!file) return null
         return <ImageCropper key={`${cropping.itemId}:${cropping.index}`} file={file} onDone={finishCrop} onCancel={() => setCropping(null)} />
       })()}
+
+      <PersonDialog
+        open={!!faceForNew}
+        onOpenChange={(v) => { if (!v) setFaceForNew(null) }}
+        initial={(() => {
+          const it = faceForNew && items.find((x) => x.id === faceForNew.itemId)
+          const f = it?.faces?.[faceForNew.index]
+          return f ? { display_name: it.found?.holderName || '', face: { crop: f.crop, d: f.d } } : undefined
+        })()}
+        onSaved={(person) => {
+          if (!faceForNew || !person?.id) return
+          const { itemId, index } = faceForNew
+          patch(itemId, (cur) => ({
+            faces: cur.faces.map((f, i) => (i === index ? { ...f, person_id: person.id } : f)),
+            person_ids: [...new Set([...cur.person_ids, person.id])],
+            found: cur.found ? { ...cur.found, holderName: null } : cur.found,
+            touched: { ...cur.touched, people: true },
+          }))
+          setFaceForNew(null)
+        }}
+      />
 
       <DuplicateDialog
         open={!!dup}
