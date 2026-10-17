@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
 
 import androidx.core.content.FileProvider;
 
@@ -44,11 +45,60 @@ public class AppUpdaterPlugin extends Plugin {
         }
     }
 
+    /** Android 8+: the user must allow DastaVault to install apps once, in Settings. */
+    private boolean mayInstall() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O || getContext().getPackageManager().canRequestPackageInstalls();
+    }
+
+    @PluginMethod
+    public void canInstall(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("allowed", mayInstall());
+        call.resolve(result);
+    }
+
+    /** Opens the "Install unknown apps" switch for DastaVault. */
+    @PluginMethod
+    public void openInstallSettings(PluginCall call) {
+        try {
+            Intent intent = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getContext().getPackageName()))
+                : new Intent(Settings.ACTION_SECURITY_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Could not open the setting", e);
+        }
+    }
+
+    /** Opens an address in the phone's browser (Chrome downloads the APK itself). */
+    @PluginMethod
+    public void openInBrowser(PluginCall call) {
+        String url = call.getString("url");
+        if (url == null || !url.startsWith("https://")) {
+            call.reject("Invalid address");
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("No browser found", e);
+        }
+    }
+
     @PluginMethod
     public void downloadAndInstall(PluginCall call) {
         String url = call.getString("url");
         if (url == null || !url.startsWith("https://")) {
             call.reject("Invalid download address");
+            return;
+        }
+        if (!mayInstall()) {
+            call.reject("NOT_ALLOWED");
             return;
         }
         new Thread(() -> {
@@ -63,7 +113,7 @@ public class AppUpdaterPlugin extends Plugin {
                 connection = (HttpURLConnection) new URL(url).openConnection();
                 connection.setInstanceFollowRedirects(true);
                 connection.setConnectTimeout(15000);
-                connection.setReadTimeout(30000);
+                connection.setReadTimeout(60000);
                 int status = connection.getResponseCode();
                 if (status != HttpURLConnection.HTTP_OK) {
                     throw new IllegalStateException("Download answered " + status);

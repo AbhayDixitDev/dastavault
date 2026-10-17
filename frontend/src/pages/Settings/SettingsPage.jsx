@@ -6,6 +6,7 @@ import { GeneralPanel } from '@/components/settings/GeneralPanel'
 import { TerminologyPanel } from '@/components/settings/TerminologyPanel'
 import { MembersPanel } from '@/components/settings/MembersPanel'
 import { AiKeysPanel } from '@/components/settings/AiKeysPanel'
+import { AppUpdateCard } from '@/components/common/AppUpdate'
 
 export function SettingsPage() {
   const { tab = 'general' } = useParams()
@@ -17,6 +18,7 @@ export function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader title="Settings" description={`Manage this ${t.workspace_label.toLowerCase()}.`} />
+      <AppUpdateCard />
       <Tabs value={tab} onValueChange={onTab}>
         <TabsList className="mb-4 w-full justify-start overflow-x-auto">
           <TabsTrigger value="general">General</TabsTrigger>
