@@ -121,9 +121,14 @@ async function getReader(langs, onProgress) {
   const promise = (async () => {
     const { createWorker } = await import('tesseract.js')
     const options = { logger: (m) => progressRouter(m) }
-    if (import.meta.env?.VITE_TESSERACT_WORKER_PATH) options.workerPath = import.meta.env.VITE_TESSERACT_WORKER_PATH
-    if (import.meta.env?.VITE_TESSERACT_CORE_PATH) options.corePath = import.meta.env.VITE_TESSERACT_CORE_PATH
+    // The reader and its English data ship with the app (scripts/copy-ocr.mjs):
+    // nothing to download before the first photo is read. Other languages
+    // still come from the CDN once and are cached.
+    const local = (path) => new URL(`${import.meta.env.BASE_URL || '/'}tesseract/${path}`, window.location.href).href
+    options.workerPath = import.meta.env?.VITE_TESSERACT_WORKER_PATH || local('worker.min.js')
+    options.corePath = import.meta.env?.VITE_TESSERACT_CORE_PATH || local('core')
     if (import.meta.env?.VITE_TESSERACT_LANG_PATH) options.langPath = import.meta.env.VITE_TESSERACT_LANG_PATH
+    else if (langs === 'eng') options.langPath = local('lang')
     const worker = await createWorker(langs.split('+'), 1, options)
     return worker
   })()
@@ -140,6 +145,15 @@ function progressRouter(m) {
     if (m.status === 'recognizing text') currentProgress({ stage: 'reading', progress: m.progress ?? 0 })
     else if (/loading|initializ/i.test(m.status || '')) currentProgress({ stage: 'preparing', progress: m.progress ?? 0 })
   } catch { /* ignore listener errors */ }
+}
+
+/**
+ * Starts the reader in the background (worker, engine, language data) so the
+ * first photo is read without that wait. Safe to call often.
+ */
+export function warmUpReader(lang) {
+  getReader(normaliseLang(lang || getDefaultLanguage())).catch(() => {})
+  getPrepWorker()
 }
 
 export async function terminateReader() {
@@ -217,9 +231,10 @@ function isImage(file) {
 /**
  * Read a whole document: pre-rendered pages, then processed images, then originals, then PDFs.
  */
-export async function readDocument({ files = [], pages = [] } = {}, { lang, onProgress } = {}) {
+export async function readDocument({ files = [], pages = [] } = {}, { lang, onProgress, maxPages = Infinity } = {}) {
   const langs = normaliseLang(lang || getDefaultLanguage())
-  const result = { ok: false, text: '', language: langs, confidence: 0, pages: [] }
+  // complete: every page was read (false when maxPages stopped early)
+  const result = { ok: false, text: '', language: langs, confidence: 0, pages: [], complete: true }
   try {
     const list = Array.isArray(files) ? files.filter((f) => f?.blob) : []
     const processed = list.filter((f) => f.kind === 'processed' && isImage(f))
@@ -236,6 +251,8 @@ export async function readDocument({ files = [], pages = [] } = {}, { lang, onPr
         .sort((a, b) => (a.page_number ?? 0) - (b.page_number ?? 0))
         .map((f, i) => ({ page_number: f.page_number ?? i + 1, blob: f.blob }))
     }
+    const totalPages = pageInputs.length
+    pageInputs = pageInputs.slice(0, maxPages)
 
     const total = { count: 0 }
     const report = (i, n, stage, p) => onProgress?.({ stage, page: i + 1, pages: n, progress: Math.min(1, (i + (p || 0)) / Math.max(1, n)) })
@@ -246,7 +263,8 @@ export async function readDocument({ files = [], pages = [] } = {}, { lang, onPr
         let pdf = null
         try {
           pdf = await pdfMod.loadPdf(pdfs[0].blob)
-          const n = pdf.numPages || 0
+          const n = Math.min(pdf.numPages || 0, maxPages)
+          result.complete = n >= (pdf.numPages || 0)
           for (let i = 0; i < n; i++) {
             const pageNumber = i + 1
             let text = ''
@@ -273,6 +291,7 @@ export async function readDocument({ files = [], pages = [] } = {}, { lang, onPr
         }
       }
     } else {
+      result.complete = pageInputs.length >= totalPages
       const n = pageInputs.length
       for (let i = 0; i < n; i++) {
         const p = pageInputs[i]

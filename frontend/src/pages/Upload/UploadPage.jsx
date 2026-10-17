@@ -8,7 +8,7 @@ import { useGetPeopleQuery, useCreatePersonMutation } from '@/store/api/peopleAp
 import { useGetGroupsQuery } from '@/store/api/groupsApi'
 import { documentsApi } from '@/store/api/documentsApi'
 import { api } from '@/services/api/client'
-import { sha256Hex, compressImage, makeThumbnail, fileKind, fileKindLabel, cleanFileName, formatBytes, uuid, MAX_UPLOAD_BYTES } from '@/services/files'
+import { sha256Hex, compressImage, SMALL_FILE_BYTES, makeThumbnail, fileKind, fileKindLabel, cleanFileName, formatBytes, uuid, MAX_UPLOAD_BYTES } from '@/services/files'
 import { pdfThumbnail } from '@/services/pdf'
 import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
@@ -72,6 +72,7 @@ function makeItem(files, defaults) {
     reading: 'idle', // idle | reading | done | none
     found: null, // { holderName, type, filled } what reading found, shown as hints
     nameOptions: [], // other names to pick from
+    size: null, // { state: 'working' | 'smaller' | 'small' | 'kept', before, after }
   }
 }
 
@@ -119,6 +120,39 @@ export function UploadPage() {
   const readQueue = useRef(Promise.resolve())
   const readJobs = useRef(new Map()) // item id -> promise of the reading
   const [draftLoaded, setDraftLoaded] = useState(false)
+  const prepQueue = useRef(Promise.resolve())
+
+  // Start the text reader now, so reading the first photo does not wait for it.
+  useEffect(() => {
+    import('@/services/ocr').then((m) => m.warmUpReader?.()).catch(() => {})
+  }, [])
+
+  /** Makes the big photos of an item smaller (small ones stay as they are), then reads them. */
+  const prepareItem = async (id) => {
+    const it = itemsRef.current.find((x) => x.id === id)
+    if (!it) return
+    const before = it.files.reduce((n, f) => n + f.size, 0)
+    const big = it.files.some((f) => fileKind(f) === 'image' && f.size > SMALL_FILE_BYTES)
+    if (!big) {
+      const onlyImages = it.files.every((f) => fileKind(f) === 'image')
+      patch(id, { size: { state: onlyImages ? 'small' : 'kept', before, after: before } })
+      autoRead(id)
+      return
+    }
+    patch(id, { size: { state: 'working', before, after: before } })
+    const files = await Promise.all(it.files.map((f) => compressImage(f)))
+    const after = files.reduce((n, f) => n + f.size, 0)
+    patch(id, (cur) => {
+      if (cur.files !== it.files) return {} // changed meanwhile
+      const previews = cur.previews.map((u, i) => {
+        if (files[i] === cur.files[i]) return u
+        if (u) URL.revokeObjectURL(u)
+        return URL.createObjectURL(files[i])
+      })
+      return { files, previews, size: { state: after < before ? 'smaller' : 'small', before, after } }
+    })
+    setTimeout(() => autoRead(id), 0)
+  }
 
   // Unfinished upload from before (app closed, page left): bring it back.
   useEffect(() => {
@@ -182,7 +216,8 @@ export function UploadPage() {
       patch(id, { reading: 'reading' })
       try {
         const [{ readDocument }, { extractSuggestions, suggestNameVariants }] = await Promise.all([import('@/services/ocr'), import('@/services/extraction')])
-        const read = await readDocument({ files: files.map((f, i) => ({ kind: 'original', mime_type: f.type, page_number: i + 1, blob: f })) })
+        // The first pages are enough to fill in the details; the rest is read after the upload.
+        const read = await readDocument({ files: files.map((f, i) => ({ kind: 'original', mime_type: f.type, page_number: i + 1, blob: f })) }, { maxPages: 2 })
         const now = itemsRef.current.find((x) => x.id === id)
         if (!now || now.files !== files) return // removed or cropped meanwhile; a new reading follows
         if (!read?.ok) {
@@ -273,7 +308,8 @@ export function UploadPage() {
     // Read the new photos and PDFs to fill in the details.
     const known = new Set(arr.map((x) => x.id))
     next.forEach((it) => {
-      if (!known.has(it.id) || it.reading === 'idle') autoRead(it.id)
+      // One after the other: twenty photos at once would freeze a phone.
+      if (!known.has(it.id) || it.reading === 'idle') prepQueue.current = prepQueue.current.then(() => prepareItem(it.id)).catch(() => {})
     })
   }
 
@@ -497,6 +533,7 @@ export function UploadPage() {
                       {it.versionOf && <Badge variant="outline">New version</Badge>}
                     </div>
                     <p className="mt-1 truncate text-sm text-muted-foreground">{it.files.map((f) => f.name).join(', ')}</p>
+                    <SizeNote size={it.size} />
                   </div>
                   {!locked && (
                     <Button size="icon-sm" variant="ghost" aria-label="Remove file" onClick={() => remove(it.id)}><X /></Button>
@@ -625,4 +662,23 @@ export function UploadPage() {
       />
     </div>
   )
+}
+
+/** One plain line about the file size: made smaller, or kept as it is. */
+function SizeNote({ size }) {
+  if (!size) return null
+  if (size.state === 'working') {
+    return <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><Spinner size="sm" /> Making the photo smaller…</p>
+  }
+  if (size.state === 'smaller') {
+    const saved = Math.round((1 - size.after / size.before) * 100)
+    return (
+      <p className="mt-1 text-xs">
+        <span className="font-semibold text-emerald-600 dark:text-emerald-400">Made {saved}% smaller</span>
+        <span className="text-muted-foreground"> · {formatBytes(size.before)} → {formatBytes(size.after)}, text stays sharp</span>
+      </p>
+    )
+  }
+  if (size.state === 'small') return <p className="mt-1 text-xs text-muted-foreground">Already small ({formatBytes(size.before)}), kept as it is</p>
+  return <p className="mt-1 text-xs text-muted-foreground">Kept as it is ({formatBytes(size.before)})</p>
 }

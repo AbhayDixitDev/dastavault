@@ -8,8 +8,9 @@
  * Message out: { id, ok, blob?, width?, height?, error? }
  */
 
+// Bigger pictures read much slower and not better: 2000px keeps small print legible.
 const MIN_SIDE = 1200
-const MAX_SIDE = 2800
+const MAX_SIDE = 2000
 
 function luminance(d, i) {
   return 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
@@ -17,7 +18,7 @@ function luminance(d, i) {
 
 async function prepare(blob, maxSide = MAX_SIDE) {
   if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap !== 'function') return null
-  const bitmap = await createImageBitmap(blob)
+  const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' }).catch(() => createImageBitmap(blob))
   let { width, height } = bitmap
   const longest = Math.max(width, height)
   let scale = 1

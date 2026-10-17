@@ -114,11 +114,19 @@ export async function makeThumbnail(source, { maxSize = 512, type = 'image/webp'
  * Shrinks a photo so uploads are quick. Returns the original file when
  * compression is not needed or fails.
  */
-export async function compressImage(file, { maxSizeMB = 1.5, maxWidthOrHeight = 2200, onProgress } = {}) {
+/** Photos up to this size are kept exactly as they are. */
+export const SMALL_FILE_BYTES = 1024 * 1024
+
+/**
+ * Makes a large photo smaller (at most about 1 MB, 2400px on the long side,
+ * which keeps printed text sharp). Photos that are already small, GIFs and
+ * other files are returned unchanged.
+ */
+export async function compressImage(file, { maxSizeMB = 1, maxWidthOrHeight = 2400, onProgress } = {}) {
   try {
     if (!file || fileKind(file) !== 'image') return file
     if (file.type === 'image/gif') return file
-    if (file.size <= maxSizeMB * 1024 * 1024 * 0.6) return file
+    if (file.size <= Math.max(SMALL_FILE_BYTES, maxSizeMB * 1024 * 1024)) return file
     const out = await imageCompression(file, {
       maxSizeMB,
       maxWidthOrHeight,

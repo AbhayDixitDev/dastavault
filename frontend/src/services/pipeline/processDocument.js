@@ -39,7 +39,7 @@ export async function processDocument({ workspaceId, documentId, versionId, file
   say(onStatus, STATUS.READING, { step: 'text', progress: 0 })
   let read = { ok: false, text: '', language: lang || 'eng', confidence: 0, pages: [] }
   // Text read before the upload (the upload page reads photos to fill in the details) is reused.
-  if (alreadyRead?.ok) {
+  if (alreadyRead?.ok && alreadyRead.complete !== false) {
     read = alreadyRead
   } else {
     try {
