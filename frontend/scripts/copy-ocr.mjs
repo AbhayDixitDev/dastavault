@@ -22,7 +22,8 @@ console.log('Text reader copied to public/tesseract')
 // Face finder (faces on ID cards and photos): detector, landmarks, face fingerprints.
 const faces = join(root, 'public', 'models', 'face')
 mkdirSync(faces, { recursive: true })
-for (const name of ['tiny_face_detector_model', 'face_landmark_68_tiny_model', 'face_recognition_model']) {
+// SSD MobileNet finds faces far more reliably than the tiny detector (small, turned or dim faces on ID cards).
+for (const name of ['ssd_mobilenetv1_model', 'face_landmark_68_model', 'face_recognition_model']) {
   for (const ext of ['-weights_manifest.json', '.bin']) {
     cpSync(join(nm, '@vladmandic/face-api/model', name + ext), join(faces, name + ext))
   }

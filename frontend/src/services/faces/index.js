@@ -9,7 +9,8 @@
  *   matchPerson(d, people) -> { person, distance } | null
  *   faceDistance(a, b)
  *
- * The models ship with the app (scripts/copy-ocr.mjs -> public/models/face)
+ * Models: SSD MobileNet v1 (finding faces), 68-point landmarks (lining the
+ * face up), ResNet face recognition (the fingerprint). They ship with the app (scripts/copy-ocr.mjs -> public/models/face)
  * and load the first time a face is looked for. Nothing here throws.
  */
 
@@ -33,8 +34,8 @@ async function api() {
       }
       await faceapi.tf.ready()
       await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+        faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
         faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
       ])
       return faceapi
@@ -87,8 +88,8 @@ export async function findFaces(source, { minScore = 0.5 } = {}) {
   try {
     const faceapi = await api()
     const canvas = await toCanvas(source)
-    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: minScore })
-    const found = await faceapi.detectAllFaces(canvas, options).withFaceLandmarks(true).withFaceDescriptors()
+    const options = new faceapi.SsdMobilenetv1Options({ minConfidence: minScore, maxResults: 10 })
+    const found = await faceapi.detectAllFaces(canvas, options).withFaceLandmarks().withFaceDescriptors()
     return found
       .map((f) => {
         const b = f.detection.box
