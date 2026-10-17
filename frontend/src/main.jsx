@@ -9,7 +9,10 @@ import { ThemeManager } from '@/components/common/ThemeManager'
 import { AppUpdate } from '@/components/common/AppUpdate'
 import { BackButtonHandler } from '@/components/common/BackButtonHandler'
 import { Toaster } from '@/components/ui/sonner'
+import { setupServiceWorker } from '@/lib/serviceWorker'
 import './index.css'
+
+setupServiceWorker()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -11,6 +11,9 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registered in src/lib/serviceWorker.js, only on the website: inside the
+      // Android app the files ship with the APK and a cache would outlive updates.
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: {
         name: 'DastaVault',

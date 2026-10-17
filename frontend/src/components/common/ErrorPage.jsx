@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, isRouteErrorResponse, useRouteError } from 'react-router-dom'
 import { AlertTriangle, Copy, Check, RefreshCw, Home } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { reloadOnce } from '@/lib/serviceWorker'
 
 /** Turns any thrown value into { title, reason, technical }. */
 export function describeError(error) {
@@ -92,5 +93,10 @@ export function ErrorView({ error, onRetry }) {
 /** Route-level error element for React Router. */
 export function RouteErrorPage() {
   const error = useRouteError()
+  // A screen of an older version that is no longer in the app: load the current version.
+  const stale = /dynamically imported module|Importing a module script failed|Loading chunk/i.test(String(error?.message || error))
+  useEffect(() => {
+    if (stale) reloadOnce()
+  }, [stale])
   return <ErrorView error={error} />
 }
