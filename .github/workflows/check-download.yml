@@ -18,7 +18,7 @@ jobs:
           URL=$(python3 -c "import json;print(json.load(open('latest.json'))['apkUrl'])")
           echo "== HEAD $URL"; curl -sSI "$URL" | head -20
           echo "== GET"; curl -sS -o new.apk -w 'http=%{http_code} size=%{size_download} time=%{time_total}\n' "$URL"
-          curl -sS -o old.apk -w 'old http=%{http_code} size=%{size_download}\n' "$BASE/DastaVault-1.1.2.apk"
+          curl -sS -o old.apk -w 'old http=%{http_code} size=%{size_download}\n' "$BASE/DastaVault-1.2.0.apk"
           file new.apk old.apk
           APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
           AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt | sort -V | tail -1)
