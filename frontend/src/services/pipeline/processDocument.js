@@ -30,7 +30,7 @@ function say(onStatus, text, extra) {
   try { onStatus?.(text, extra) } catch { /* listener errors are not ours */ }
 }
 
-export async function processDocument({ workspaceId, documentId, versionId, files = [], people = [], groups = [], workspaceKind, lang, onStatus, alreadyRead = null, alreadyFaces = null, linkFaces = true } = {}) {
+export async function processDocument({ workspaceId, documentId, versionId, files = [], people = [], groups = [], workspaceKind, lang, onStatus, alreadyRead = null, alreadyFaces = null, linkFaces = true, location = null } = {}) {
   const result = { ok: false, textOk: false, suggestionsOk: false, embeddingsOk: false }
   if (!workspaceId || !documentId) return result
   const base = `/workspaces/${workspaceId}/documents/${documentId}`
@@ -94,12 +94,15 @@ export async function processDocument({ workspaceId, documentId, versionId, file
         faces = (await findFaces(page.blob)).slice(0, 6).map((f) => ({ ...f, person_id: matchPerson(f.d, people)?.person.id ?? null }))
       }
     }
+    const fields = {}
     if (faces) {
-      const fields = { faces: faces.map(({ box, crop, d, person_id }) => ({ box, crop, d, person_id: person_id ?? null })) }
+      fields.faces = faces.map(({ box, crop, d, person_id }) => ({ box, crop, d, person_id: person_id ?? null }))
       const known = linkFaces ? faces.find((f) => f.person_id)?.person_id : null
       if (known) fields.person_id = known
-      await api.patch(`${base}/metadata`, { fields })
     }
+    // Where the photo was taken (see services/places).
+    if (location?.lat !== undefined) fields.location = location
+    if (Object.keys(fields).length) await api.patch(`${base}/metadata`, { fields })
   } catch { /* faces are optional */ }
 
   // 3. Chunk + embed

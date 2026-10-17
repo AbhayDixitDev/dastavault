@@ -37,6 +37,8 @@ function AskSection({ workspaceId, doc }) {
   )
 }
 
+const MOBILE_ACTION = 'h-auto min-w-0 flex-col gap-1 rounded-xl px-1 py-2 text-xs [&_svg]:size-5'
+
 export function DocumentDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -122,7 +124,7 @@ export function DocumentDetailPage() {
   const moreMenu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size={isDesktop ? 'icon' : 'lg'} aria-label="More" className={isDesktop ? '' : 'flex-1'}>
+        <Button variant={isDesktop ? 'outline' : 'ghost'} size={isDesktop ? 'icon' : 'default'} aria-label="More" className={isDesktop ? '' : MOBILE_ACTION}>
           <MoreHorizontal /> {!isDesktop && 'More'}
         </Button>
       </DropdownMenuTrigger>
@@ -208,10 +210,11 @@ export function DocumentDetailPage() {
 
         {!isDesktop && (
           <>
-            <div className="flex gap-2">
-              <Button variant="outline" size="lg" className="flex-1" onClick={() => setShareOpen(true)}><Share2 /> Share</Button>
-              {canEdit && <Button variant="outline" size="lg" className="flex-1" onClick={() => setTab('details')}><Pencil /> Edit</Button>}
-              {canEdit && <Button variant="outline" size="lg" className="flex-1" onClick={() => setVersionOpen(true)}><Upload /> Version</Button>}
+            {/* Like a photo app: icon over a short word, all on one row at any width. */}
+            <div className={canEdit ? 'grid grid-cols-4 gap-2' : 'grid grid-cols-2 gap-2'}>
+              <Button variant="ghost" className={MOBILE_ACTION} onClick={() => setShareOpen(true)}><Share2 /> Share</Button>
+              {canEdit && <Button variant="ghost" className={MOBILE_ACTION} onClick={() => setTab('details')}><Pencil /> Edit</Button>}
+              {canEdit && <Button variant="ghost" className={MOBILE_ACTION} onClick={() => setVersionOpen(true)}><Upload /> Version</Button>}
               {moreMenu}
             </div>
             {sections}

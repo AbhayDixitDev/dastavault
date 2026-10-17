@@ -99,10 +99,13 @@ export async function attachSummaries(db, wsId, docs) {
     versionIds.length ? loadFiles(db, wsId, docIds, versionIds) : [],
     db.from('document_people').select('document_id, link_type, person:people!person_id(id, display_name, avatar_key)').eq('workspace_id', wsId).in('document_id', docIds),
     db.from('document_groups').select('document_id, group:groups!group_id(id, name, color)').eq('workspace_id', wsId).in('document_id', docIds),
-    // Faces found on the pages (set by the app), for grouping by face.
-    db.from('document_metadata').select('document_id, value_json').eq('workspace_id', wsId).eq('key', 'faces').in('document_id', docIds),
+    // Faces found on the pages and the place of a photo (set by the app).
+    db.from('document_metadata').select('document_id, key, value_json').eq('workspace_id', wsId).in('key', ['faces', 'location']).in('document_id', docIds),
   ])
-  const facesBy = new Map((faces.data || []).map((r) => [r.document_id, Array.isArray(r.value_json) ? r.value_json : []]))
+  const rows = faces.data || []
+  const facesBy = new Map(rows.filter((r) => r.key === 'faces').map((r) => [r.document_id, Array.isArray(r.value_json) ? r.value_json : []]))
+  // Where a photo was taken: { lat, lng, place } (set by the app from the photo's GPS).
+  const locationBy = new Map(rows.filter((r) => r.key === 'location' && r.value_json).map((r) => [r.document_id, r.value_json]))
   const filesBy = groupBy(files, 'document_id', publicFile)
   const peopleBy = groupBy(unwrap(people, 'Load document people').filter((r) => r.person), 'document_id', (r) => ({ ...r.person, link_type: r.link_type }))
   const groupsBy = groupBy(unwrap(groups, 'Load document groups').filter((r) => r.group), 'document_id', (r) => r.group)
@@ -112,6 +115,7 @@ export async function attachSummaries(db, wsId, docs) {
     d.groups = groupsBy.get(d.id) || []
     // null: not looked at yet; []: no faces.
     d.faces = facesBy.has(d.id) ? facesBy.get(d.id) : null
+    d.location = locationBy.get(d.id) || null
   }
   return docs
 }

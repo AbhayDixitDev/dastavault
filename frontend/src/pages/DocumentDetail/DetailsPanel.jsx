@@ -241,10 +241,13 @@ export function DetailsPanel({ workspaceId, document: doc, canEdit }) {
           <Label>More details</Label>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
             {Object.entries(doc.metadata)
-              .filter(([k, v]) => v && !['document_type', 'organisation', 'document_number', 'issue_date', 'expiry_date', 'summary', 'suggested_name'].includes(k))
+              // Internal values (faces, links by id) are not details to read.
+              .filter(([k, v]) => v && !['document_type', 'organisation', 'document_number', 'issue_date', 'expiry_date', 'summary', 'suggested_name', 'faces', 'person_id', 'group_id'].includes(k))
+              .map(([k, v]) => [k, k === 'location' ? v?.place || null : v])
+              .filter(([, v]) => v !== null && typeof v !== 'object')
               .map(([k, v]) => (
                 <div key={k} className="contents">
-                  <dt className="text-muted-foreground">{SUGGESTION_LABELS[k] || k.replace(/_/g, ' ')}</dt>
+                  <dt className="text-muted-foreground">{k === 'location' ? 'Place' : SUGGESTION_LABELS[k] || k.replace(/_/g, ' ')}</dt>
                   <dd className="break-words">{String(v)}</dd>
                 </div>
               ))}

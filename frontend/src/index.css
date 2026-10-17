@@ -164,6 +164,12 @@
 }
 
 @layer base {
+  /* Grid items may shrink below their text: a long name or file name wraps or
+     is cut instead of widening the whole page (no sideways scrolling). */
+  .grid > * {
+    min-width: 0;
+  }
+
   * {
     @apply border-border outline-ring/50;
     scrollbar-width: thin;

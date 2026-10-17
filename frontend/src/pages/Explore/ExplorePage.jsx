@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Building2, CalendarClock, CalendarDays, Copy, ImageOff, Inbox, ScanFace, Search, Users } from 'lucide-react'
+import { ArrowLeft, Building2, CalendarClock, CalendarDays, Copy, ImageOff, Inbox, MapPin, ScanFace, Search, Users } from 'lucide-react'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { loadAllDocuments, rememberedDocuments } from '@/services/documents/allDocuments'
 import { pickThumbnailFile } from '@/services/files'
@@ -85,6 +85,7 @@ function buildCollections(docs) {
   const people = new Map()
   const types = new Map()
   const orgs = new Map()
+  const places = new Map()
   const years = new Map()
   const expiring = []
   const unsorted = []
@@ -92,6 +93,8 @@ function buildCollections(docs) {
   for (const d of docs) {
     for (const p of d.people || []) addTo(people, p.id, d, { label: p.display_name })
     addTo(types, d.document_type || 'other', d, { label: documentTypeLabel(d.document_type || 'other') })
+    const place = String(d.location?.place || '').trim()
+    if (place) addTo(places, place.toLowerCase(), d, { label: place })
     const org = String(d.organisation || '').trim()
     if (org) addTo(orgs, org.toLowerCase(), d, { label: org })
     const year = String(d.issue_date || d.created_at || '').slice(0, 4)
@@ -107,6 +110,7 @@ function buildCollections(docs) {
     people: [...people.values()].sort(bySize),
     types: [...types.values()].sort(bySize),
     orgs: [...orgs.values()].filter((g) => g.docs.length > 1).sort(bySize),
+    places: [...places.values()].sort(bySize),
     years: [...years.values()].sort((a, b) => b.key.localeCompare(a.key)),
     similar: similarGroups(docs).map((g, i) => ({ key: String(i), label: g[0].name, docs: g })),
     expiring: expiring.sort((a, b) => String(a.expiry_date).localeCompare(String(b.expiry_date))),
@@ -223,7 +227,7 @@ export function ExplorePage() {
   if (open && c) {
     const [kind, ...rest] = open.split(':')
     const key = decodeURIComponent(rest.join(':'))
-    const list = { type: c.types, org: c.orgs, year: c.years, similar: c.similar }[kind]
+    const list = { type: c.types, org: c.orgs, year: c.years, similar: c.similar, place: c.places }[kind]
     let view = list?.find((g) => g.key === key)
     if (kind === 'expiring') view = { label: 'Expiring soon', docs: c.expiring }
     if (kind === 'unsorted') view = { label: 'Not sorted yet', docs: c.unsorted }
@@ -325,6 +329,14 @@ export function ExplorePage() {
             <Section title="Look alike" icon={Copy} hint="Same card or paper, photographed again">
               <Row>
                 {c.similar.map((g) => <SimilarTile key={g.key} workspaceId={workspaceId} group={g} to={at('similar', g.key)} />)}
+              </Row>
+            </Section>
+          )}
+
+          {c.places.length > 0 && (
+            <Section title="Places" icon={MapPin} hint="Where photos were taken">
+              <Row>
+                {c.places.map((g) => <Tile key={g.key} workspaceId={workspaceId} group={g} to={at('place', g.key)} />)}
               </Row>
             </Section>
           )}

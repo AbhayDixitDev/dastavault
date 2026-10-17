@@ -134,6 +134,13 @@ export function UploadPage() {
   const prepareItem = async (id) => {
     const it = itemsRef.current.find((x) => x.id === id)
     if (!it) return
+    // Where the photo was taken: read before shrinking it (that drops the camera data).
+    const photo = it.files.find((f) => fileKind(f) === 'image')
+    if (photo && !it.location) {
+      const { photoLocation } = await import('@/services/places')
+      const location = await photoLocation(photo)
+      if (location) patch(id, { location })
+    }
     const before = it.files.reduce((n, f) => n + f.size, 0)
     const big = it.files.some((f) => fileKind(f) === 'image' && f.size > SMALL_FILE_BYTES)
     if (!big) {
@@ -478,7 +485,7 @@ export function UploadPage() {
       if (mod?.processDocument && documentId && version?.id) {
         const blobs = uploaded.map((uf, i) => ({ id: uf.id, kind: uf.kind, mime_type: uf.mime_type, page_number: uf.page_number ?? i + 1, blob: prepared[i]?.file }))
         await mod
-          .processDocument({ workspaceId, documentId, versionId: version.id, files: blobs, people, groups, alreadyRead: item.read, alreadyFaces: item.faces, linkFaces: false, onStatus: (s) => set({ statusText: s }) })
+          .processDocument({ workspaceId, documentId, versionId: version.id, files: blobs, people, groups, alreadyRead: item.read, alreadyFaces: item.faces, linkFaces: false, location: item.location, onStatus: (s) => set({ statusText: s }) })
           .catch(() => null)
         dispatch(documentsApi.util.invalidateTags([{ type: 'Document', id: documentId }, { type: 'Suggestions', id: documentId }, 'Documents']))
       }
