@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Camera, FolderOpen, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ACCEPTED_UPLOAD_TYPES } from '@/services/files'
@@ -6,12 +6,25 @@ import { cn } from '@/lib/utils'
 
 /**
  * Big tap area to pick files. Supports drag-and-drop on desktop and a camera
- * button on phones (input capture="environment").
+ * button on phones (input capture="environment"). `autoPick` opens the file
+ * chooser at once (coming from an Upload button); where the browser does not
+ * allow that, the buttons are there.
  */
-export function UploadDropzone({ onFiles, disabled, className, compact = false }) {
+export function UploadDropzone({ onFiles, disabled, className, compact = false, autoPick = false }) {
   const inputRef = useRef(null)
   const cameraRef = useRef(null)
   const [over, setOver] = useState(false)
+
+  const picked = useRef(false)
+  useEffect(() => {
+    if (!autoPick || picked.current) return
+    picked.current = true
+    try {
+      inputRef.current?.click()
+    } catch {
+      // Not allowed without a tap here: the buttons are shown.
+    }
+  }, [autoPick])
 
   const emit = (list) => {
     const files = Array.from(list || []).filter(Boolean)

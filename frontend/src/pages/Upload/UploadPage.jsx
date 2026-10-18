@@ -6,7 +6,7 @@ import { ArrowLeft, CheckCircle2, CloudUpload, Copy, Crop, ExternalLink, FileTex
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useGetPeopleQuery, useCreatePersonMutation, useUpdatePersonMutation } from '@/store/api/peopleApi'
 import { withFace } from '@/services/faces'
-import { PersonDialog } from '@/components/people/PersonDialog'
+import { FaceNames } from '@/components/people/FaceNames'
 import { useGetGroupsQuery } from '@/store/api/groupsApi'
 import { documentsApi } from '@/store/api/documentsApi'
 import { api } from '@/services/api/client'
@@ -318,20 +318,68 @@ export function UploadPage() {
     }
   }
 
-  /** Someone on the photo: a new person (photo and face kept), or a person who exists. */
-  const [faceForNew, setFaceForNew] = useState(null) // { itemId, index }
+  /** Someone on the photo: a person who exists (the face is remembered for next time), or nobody (null). */
+  const [creatingFace, setCreatingFace] = useState(null) // { itemId, index }
   const assignFace = async (itemId, index, person) => {
     const it = itemsRef.current.find((x) => x.id === itemId)
     const face = it?.faces?.[index]
-    if (!face || !person) return
+    if (!face) return
+    if (!person) {
+      // Not them: the face is unknown again, and they are no longer on the document for it.
+      patch(itemId, (cur) => ({
+        faces: cur.faces.map((f, i) => (i === index ? { ...f, person_id: null, name: '' } : f)),
+        person_ids: cur.faces.some((f, i) => i !== index && f.person_id === face.person_id) ? cur.person_ids : cur.person_ids.filter((id) => id !== face.person_id),
+        touched: { ...cur.touched, people: true },
+      }))
+      return
+    }
     patch(itemId, (cur) => ({
-      faces: cur.faces.map((f, i) => (i === index ? { ...f, person_id: person.id } : f)),
+      faces: cur.faces.map((f, i) => (i === index ? { ...f, person_id: person.id, name: '' } : f)),
       person_ids: [...new Set([...cur.person_ids, person.id])],
       touched: { ...cur.touched, people: true },
     }))
     // Remember the face, so they are recognised next time.
     const full = lookupRef.current.people.find((p) => p.id === person.id) || person
     updatePerson({ workspaceId, personId: person.id, custom: withFace(full, { d: face.d, crop: full.custom?.photo ? undefined : face.crop }) }).catch(() => {})
+  }
+
+  const nameFace = (itemId, index, name) => patch(itemId, (cur) => ({ faces: cur.faces.map((f, i) => (i === index ? { ...f, name } : f)) }))
+
+  /** A new person with this face (photo and fingerprint), on the document. */
+  const createFacePerson = async (itemId, index, name) => {
+    const face = itemsRef.current.find((x) => x.id === itemId)?.faces?.[index]
+    if (!face || !name) return null
+    setCreatingFace({ itemId, index })
+    try {
+      const person = await createPerson({ workspaceId, display_name: name, custom: withFace({}, { crop: face.crop, d: face.d }) }).unwrap()
+      patch(itemId, (cur) => ({
+        faces: cur.faces.map((f, i) => (i === index ? { ...f, person_id: person.id, label: person.display_name || name, name: '' } : f)),
+        person_ids: [...new Set([...cur.person_ids, person.id])],
+        found: cur.found?.holderName && cur.found.holderName.toLowerCase() === name.toLowerCase() ? { ...cur.found, holderName: null } : cur.found,
+        touched: { ...cur.touched, people: true },
+      }))
+      toast.success(`${person.display_name || name} added.`)
+      return person
+    } catch (err) {
+      toast.error(errorMessage(err))
+      return null
+    } finally {
+      setCreatingFace(null)
+    }
+  }
+
+  /** Names typed for faces and not confirmed: someone who exists by that name, else a new person. */
+  const settleFaceNames = async (itemId) => {
+    const it = itemsRef.current.find((x) => x.id === itemId)
+    for (const [index, face] of (it?.faces || []).entries()) {
+      const name = (face.name || '').trim()
+      if (face.person_id || !name) continue
+      const known = lookupRef.current.people.find((p) => (p.display_name || '').trim().toLowerCase() === name.toLowerCase())
+      // eslint-disable-next-line no-await-in-loop
+      if (known) await assignFace(itemId, index, known)
+      // eslint-disable-next-line no-await-in-loop
+      else await createFacePerson(itemId, index, name)
+    }
   }
 
   const addHolderAsPerson = async (it) => {
@@ -411,6 +459,12 @@ export function UploadPage() {
       if (pendingRead && (item.reading === 'reading' || item.aiReading)) {
         set({ statusText: item.aiReading ? 'Reading the handwriting...' : 'Reading the photo...' })
         await pendingRead.catch(() => null)
+        item = itemsRef.current.find((x) => x.id === item.id) || item
+      }
+      if (item.faces?.some((f) => !f.person_id && f.name?.trim())) {
+        set({ statusText: 'Adding the people on the photo...' })
+        await settleFaceNames(item.id)
+        await new Promise((r) => setTimeout(r, 0)) // the people just added are on the item now
         item = itemsRef.current.find((x) => x.id === item.id) || item
       }
       set({ status: 'preparing', statusText: STATUS.preparing, error: '' })
@@ -564,7 +618,7 @@ export function UploadPage() {
         </div>
       )}
 
-      <UploadDropzone onFiles={addFiles} disabled={running} compact={items.length > 0} className={items.length > 0 ? 'mb-4' : ''} />
+      <UploadDropzone onFiles={addFiles} disabled={running} compact={items.length > 0} autoPick={searchParams.get('pick') === '1' && draftLoaded && items.length === 0} className={items.length > 0 ? 'mb-4' : ''} />
 
       {items.length === 0 && (
         <label className="mt-4 flex items-center justify-between rounded-xl border bg-card p-3 text-sm">
@@ -649,37 +703,16 @@ export function UploadPage() {
                       </div>
                     )}
                     {it.faces?.length > 0 && (
-                      <div className="rounded-xl border p-3">
-                        <p className="mb-2 text-sm font-medium">Faces on this photo</p>
-                        <div className="flex flex-wrap gap-3">
-                          {it.faces.map((f, i) => {
-                            const who = people.find((p) => p.id === f.person_id)
-                            return (
-                              <div key={i} className="flex w-28 flex-col items-center gap-1.5 text-center">
-                                <img src={f.crop} alt="" className="size-16 rounded-full border object-cover" />
-                                {who ? (
-                                  <span className="flex items-center gap-1 text-xs font-medium"><CheckCircle2 className="size-3.5 text-emerald-600" /> {who.display_name}</span>
-                                ) : (
-                                  <>
-                                    <button type="button" onClick={() => setFaceForNew({ itemId: it.id, index: i })} className="text-xs font-semibold text-primary">+ New {t.person_label.toLowerCase()}</button>
-                                    {people.length > 0 && (
-                                      <select
-                                        aria-label="This is"
-                                        value=""
-                                        onChange={(e) => assignFace(it.id, i, people.find((p) => p.id === e.target.value))}
-                                        className="w-full rounded-md border bg-background px-1 py-1 text-xs"
-                                      >
-                                        <option value="">This is…</option>
-                                        {people.map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}
-                                      </select>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
+                      <FaceNames
+                        faces={it.faces}
+                        people={people}
+                        personLabel={t.person_label}
+                        suggestion={it.found?.holderName}
+                        creating={creatingFace?.itemId === it.id ? creatingFace.index : null}
+                        onName={(index, name) => nameFace(it.id, index, name)}
+                        onPerson={(index, person) => assignFace(it.id, index, person)}
+                        onCreate={(index, name) => createFacePerson(it.id, index, name)}
+                      />
                     )}
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="grid min-w-0 gap-1.5">
@@ -772,27 +805,6 @@ export function UploadPage() {
         if (!file) return null
         return <ImageCropper key={`${cropping.itemId}:${cropping.index}`} file={file} onDone={finishCrop} onCancel={() => setCropping(null)} />
       })()}
-
-      <PersonDialog
-        open={!!faceForNew}
-        onOpenChange={(v) => { if (!v) setFaceForNew(null) }}
-        initial={(() => {
-          const it = faceForNew && items.find((x) => x.id === faceForNew.itemId)
-          const f = it?.faces?.[faceForNew.index]
-          return f ? { display_name: it.found?.holderName || '', face: { crop: f.crop, d: f.d } } : undefined
-        })()}
-        onSaved={(person) => {
-          if (!faceForNew || !person?.id) return
-          const { itemId, index } = faceForNew
-          patch(itemId, (cur) => ({
-            faces: cur.faces.map((f, i) => (i === index ? { ...f, person_id: person.id } : f)),
-            person_ids: [...new Set([...cur.person_ids, person.id])],
-            found: cur.found ? { ...cur.found, holderName: null } : cur.found,
-            touched: { ...cur.touched, people: true },
-          }))
-          setFaceForNew(null)
-        }}
-      />
 
       <DuplicateDialog
         open={!!dup}
