@@ -211,14 +211,14 @@ export function PersonPage() {
             ) : personDocs.length > 0 ? (
               <>
                 {/* Pick a kind or a year; see them grouped */}
-                <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
+                <div className="flex flex-wrap gap-1.5">
                   <FilterChip active={!typeFilter} onClick={() => setTypeFilter('')}>All {personDocs.length}</FilterChip>
                   {typeCounts.map(([key, n]) => (
                     <FilterChip key={key} active={typeFilter === key} onClick={() => setTypeFilter(typeFilter === key ? '' : key)}>{documentTypeLabel(key)} {n}</FilterChip>
                   ))}
                 </div>
                 {yearCounts.length > 1 && (
-                  <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
+                  <div className="flex flex-wrap gap-1.5">
                     <FilterChip active={!yearFilter} onClick={() => setYearFilter('')}>Every year</FilterChip>
                     {yearCounts.sort((a, b) => b[0].localeCompare(a[0])).map(([key, n]) => (
                       <FilterChip key={key} active={yearFilter === key} onClick={() => setYearFilter(yearFilter === key ? '' : key)}>{key} · {n}</FilterChip>

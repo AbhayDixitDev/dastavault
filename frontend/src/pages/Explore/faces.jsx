@@ -46,10 +46,10 @@ function pagePhoto(doc) {
 
 export function FaceRow({ groups, to }) {
   return (
-    <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:px-0">
+    <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 lg:grid-cols-8">
       {groups.map((g) => (
-        <Link key={g.key} to={to(g)} className="w-20 shrink-0 snap-start text-center">
-          <img src={g.person?.custom?.photo || g.crop} alt="" className="size-20 rounded-full border object-cover" />
+        <Link key={g.key} to={to(g)} className="block min-w-0 text-center">
+          <img src={g.person?.custom?.photo || g.crop} alt="" className="mx-auto aspect-square w-full max-w-24 rounded-full border object-cover" />
           <p className={g.person ? 'mt-1.5 truncate text-xs font-medium' : 'mt-1.5 truncate text-xs font-medium text-primary'}>
             {g.person ? g.person.display_name : 'Add name'}
           </p>

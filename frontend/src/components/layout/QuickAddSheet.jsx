@@ -113,7 +113,7 @@ export function QuickAddSheet({ open, onOpenChange }) {
               <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
                 <UserRound className="size-4 text-primary" /> Whose is it?
               </p>
-              <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2">
+              <div className="flex flex-wrap gap-2 pb-2">
                 <PersonChip active={!personId} onClick={() => setPersonId('')} label="Not sure" icon={<Users className="size-5" />} />
                 {people.map((p) => (
                   <PersonChip

@@ -23,15 +23,26 @@ export const SAME_PERSON = 0.5
 
 let loading = null
 
+/**
+ * Runs the models with WebAssembly, not the GPU: WebGL gives wrong numbers on
+ * many phone GPUs (faces silently not found), WebAssembly computes the same
+ * on every device. Falls back to plain JavaScript.
+ */
 async function api() {
   if (!loading) {
     loading = (async () => {
-      const faceapi = await import('@vladmandic/face-api')
+      const [faceapi, wasm] = await Promise.all([
+        import('@vladmandic/face-api/dist/face-api.esm-nobundle.js'),
+        import('@tensorflow/tfjs-backend-wasm/dist/index.js'),
+      ])
+      wasm.setWasmPaths(new URL(`${import.meta.env.BASE_URL || '/'}tfjs-wasm/`, window.location.href).href)
+      let ok = false
       try {
-        await faceapi.tf.setBackend('webgl')
+        ok = await faceapi.tf.setBackend('wasm')
       } catch {
-        await faceapi.tf.setBackend('cpu')
+        ok = false
       }
+      if (!ok) await faceapi.tf.setBackend('cpu')
       await faceapi.tf.ready()
       await Promise.all([
         faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),

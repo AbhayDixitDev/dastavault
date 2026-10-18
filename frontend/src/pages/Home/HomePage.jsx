@@ -91,9 +91,9 @@ export function HomePage() {
             <h2 className="text-sm font-semibold">{t.person_label_plural}</h2>
             <Link to="people" className="flex items-center text-xs text-muted-foreground">All <ChevronRight className="size-3.5" /></Link>
           </div>
-          <div className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
-            {people.map((p) => (
-              <Link key={p.id} to={`people/${p.id}`} className="flex w-16 shrink-0 flex-col items-center gap-1 text-center">
+          <div className="grid grid-cols-4 gap-3 sm:grid-cols-8">
+            {people.slice(0, 8).map((p) => (
+              <Link key={p.id} to={`people/${p.id}`} className="flex min-w-0 flex-col items-center gap-1 text-center">
                 <PersonAvatar person={p} className="size-16 border" />
                 <span className="w-full truncate text-xs">{p.display_name}</span>
               </Link>

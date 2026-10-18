@@ -75,7 +75,7 @@ export function EditorToolbar({ editor, className, sticky = true }) {
       role="toolbar"
       aria-label="Formatting"
       className={cn(
-        'flex items-center gap-1 overflow-x-auto rounded-xl border bg-card p-1 shadow-soft [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        'flex flex-wrap items-center gap-1 rounded-xl border bg-card p-1 shadow-soft',
         sticky && 'sticky bottom-2 z-20 sm:bottom-auto sm:top-2',
         className,
       )}

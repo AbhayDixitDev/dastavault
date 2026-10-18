@@ -172,25 +172,19 @@
 
   * {
     @apply border-border outline-ring/50;
-    scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    scrollbar-width: none;
   }
 
+  /* No scrollbars anywhere; content still scrolls. */
   *::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    display: none;
+    width: 0;
+    height: 0;
   }
-  *::-webkit-scrollbar-track {
-    background: var(--scrollbar-track);
-  }
-  *::-webkit-scrollbar-thumb {
-    background-color: var(--scrollbar-thumb);
-    border-radius: 999px;
-    border: 2px solid transparent;
-    background-clip: content-box;
-  }
-  *::-webkit-scrollbar-thumb:hover {
-    background-color: var(--scrollbar-thumb-hover);
+
+  html,
+  body {
+    overflow-x: clip;
   }
 
   html {
@@ -257,9 +251,8 @@
   min-width: 44px;
 }
 
-/* Thin, themed scrollbar for scroll areas inside cards and dialogs */
+/* Scroll areas inside cards and dialogs */
 @utility scroll-inside {
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }

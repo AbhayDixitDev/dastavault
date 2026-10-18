@@ -28,3 +28,4 @@ public/opencv
 public/ort
 public/models/Xenova
 public/models/search-model.json
+public/tfjs-wasm

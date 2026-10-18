@@ -20,7 +20,7 @@ export function SettingsPage() {
       <PageHeader title="Settings" description={`Manage this ${t.workspace_label.toLowerCase()}.`} />
       <AppUpdateCard />
       <Tabs value={tab} onValueChange={onTab}>
-        <TabsList className="mb-4 w-full justify-start overflow-x-auto">
+        <TabsList className="mb-4 h-auto w-full flex-wrap justify-start">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="words">Words</TabsTrigger>
           <TabsTrigger value="members">{t.member_label_plural}</TabsTrigger>

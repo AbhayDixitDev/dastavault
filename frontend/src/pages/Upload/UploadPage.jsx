@@ -658,13 +658,13 @@ export function UploadPage() {
                         <Label htmlFor={`name-${it.id}`}>Name</Label>
                         <Input id={`name-${it.id}`} value={it.name} onChange={(e) => edit(it.id, 'name', { name: e.target.value })} placeholder="Give it a name" />
                         {it.nameOptions?.filter((n) => n !== it.name).length > 0 && (
-                          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pt-0.5 pb-1 [scrollbar-width:none]" aria-label="Other names">
+                          <div className="flex flex-wrap gap-1.5 pt-0.5" aria-label="Other names">
                             {it.nameOptions.filter((n) => n !== it.name).map((n) => (
                               <button
                                 key={n}
                                 type="button"
                                 onClick={() => edit(it.id, 'name', { name: n })}
-                                className="shrink-0 rounded-full border bg-background px-3 py-1 text-xs font-medium hover:border-primary hover:text-primary"
+                                className="max-w-full truncate rounded-full border bg-background px-3 py-1 text-xs font-medium hover:border-primary hover:text-primary"
                               >
                                 {n}
                               </button>

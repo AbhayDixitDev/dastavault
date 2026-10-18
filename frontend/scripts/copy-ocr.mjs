@@ -66,3 +66,10 @@ for (const f of modelFiles) {
 if (!missing) console.log(`Search model ready in public/models/${MODEL}`)
 // Tells the app whether to look for the model here first (see embedding.worker.js).
 writeFileSync(join(root, 'public', 'models', 'search-model.json'), JSON.stringify({ model: MODEL, local: !missing }))
+
+// Face models run on WebAssembly (same results on every phone; WebGL is not reliable there).
+mkdirSync(join(root, 'public', 'tfjs-wasm'), { recursive: true })
+for (const f of ['tfjs-backend-wasm.wasm', 'tfjs-backend-wasm-simd.wasm', 'tfjs-backend-wasm-threaded-simd.wasm']) {
+  cpSync(join(nm, '@tensorflow/tfjs-backend-wasm/dist', f), join(root, 'public', 'tfjs-wasm', f))
+}
+console.log('TensorFlow WebAssembly copied to public/tfjs-wasm')

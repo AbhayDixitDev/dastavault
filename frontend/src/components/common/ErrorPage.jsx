@@ -80,7 +80,7 @@ export function ErrorView({ error, onRetry }) {
                 {copied ? <Check className="text-green-600" /> : <Copy />} {copied ? 'Copied' : 'Copy'}
               </Button>
             </div>
-            <pre className="scroll-inside max-h-56 overflow-x-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-foreground/80">
+            <pre className="scroll-inside max-h-56 overflow-x-hidden whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-foreground/80">
               {technical}
             </pre>
           </div>

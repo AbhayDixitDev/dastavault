@@ -153,17 +153,17 @@ function Section({ title, icon: Icon, children, hint }) {
 }
 
 function Row({ children }) {
-  return <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:px-0">{children}</div>
+  return <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">{children}</div>
 }
 
 function Tile({ workspaceId, group, to, round = false }) {
   return (
-    <Link to={to} className={cn('group shrink-0 snap-start', round ? 'w-20 text-center' : 'w-32')}>
-      <div className="relative">
+    <Link to={to} className={cn('group block min-w-0', round && 'text-center')}>
+      <div className={cn('relative', round && 'mx-auto max-w-24')}>
         {round ? (
-          <Cover workspaceId={workspaceId} doc={group.docs[0]} round className="size-20 ring-2 ring-primary/20 transition group-hover:ring-primary" />
+          <Cover workspaceId={workspaceId} doc={group.docs[0]} round className="aspect-square w-full ring-2 ring-primary/20 transition group-hover:ring-primary" />
         ) : (
-          <Cover workspaceId={workspaceId} doc={group.docs[0]} className="aspect-square w-32 transition group-hover:brightness-95" />
+          <Cover workspaceId={workspaceId} doc={group.docs[0]} className="aspect-square w-full transition group-hover:brightness-95" />
         )}
         {round && !pickThumbnailFile(group.docs[0]?.files) && (
           <span className="absolute inset-0 flex items-center justify-center rounded-full bg-primary text-lg font-semibold text-primary-foreground">{initials(group.label)}</span>
@@ -178,8 +178,8 @@ function Tile({ workspaceId, group, to, round = false }) {
 function SimilarTile({ workspaceId, group, to }) {
   const [a, b, c] = group.docs
   return (
-    <Link to={to} className="w-40 shrink-0 snap-start">
-      <div className="grid aspect-square w-40 grid-cols-2 grid-rows-2 gap-0.5 overflow-hidden rounded-2xl">
+    <Link to={to} className="block min-w-0">
+      <div className="grid aspect-square w-full grid-cols-2 grid-rows-2 gap-0.5 overflow-hidden rounded-2xl">
         <Cover workspaceId={workspaceId} doc={a} className="row-span-2 size-full rounded-none" />
         <Cover workspaceId={workspaceId} doc={b} className="size-full rounded-none" />
         {c ? <Cover workspaceId={workspaceId} doc={c} className="size-full rounded-none" /> : <div className="bg-muted" />}

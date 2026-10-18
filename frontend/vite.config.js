@@ -39,7 +39,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         // The text reader (several MB) is loaded only when a photo is read.
-        globIgnores: ['tesseract/**', 'models/**', 'opencv/**', 'ort/**'],
+        globIgnores: ['tesseract/**', 'models/**', 'opencv/**', 'ort/**', 'tfjs-wasm/**'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [

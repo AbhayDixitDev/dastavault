@@ -67,7 +67,7 @@ export function EnhanceStep({ warped, settings, onSettings, onRetake, onAddPage,
       </div>
 
       <div className="safe-bottom space-y-3 px-4 pb-5 pt-2">
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex flex-wrap gap-2 pb-1">
           {MODES.map((m) => (
             <button
               key={m.key}

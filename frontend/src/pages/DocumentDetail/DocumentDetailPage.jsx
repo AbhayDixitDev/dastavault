@@ -145,7 +145,7 @@ export function DocumentDetailPage() {
 
   const sections = (
     <Tabs value={tab} onValueChange={setTab} className="gap-3">
-      <TabsList className="w-full overflow-x-auto sm:w-fit">
+      <TabsList className="h-auto w-full flex-wrap sm:w-fit">
         {!isDesktop && <TabsTrigger value="details">Details</TabsTrigger>}
         <TabsTrigger value="versions">Versions{versions.length > 1 ? ` (${versions.length})` : ''}</TabsTrigger>
         <TabsTrigger value="timeline">Timeline</TabsTrigger>

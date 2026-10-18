@@ -35,7 +35,7 @@ export function describeVersionFiles(files = [], versionId) {
 function PageStrip({ workspaceId, pages, current, onSelect }) {
   if (pages.length < 2) return null
   return (
-    <div className="flex gap-2 overflow-x-auto border-t bg-card/80 p-2">
+    <div className="flex flex-wrap gap-2 border-t bg-card/80 p-2">
       {pages.map((f, i) => (
         <button
           key={f.id}

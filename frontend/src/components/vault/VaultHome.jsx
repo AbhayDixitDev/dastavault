@@ -84,7 +84,7 @@ export function VaultHome({ vault, onLock }) {
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title, website or username" className="h-11 pl-9" />
       </div>
 
-      <div className="mb-4 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="mb-4 flex flex-wrap gap-2">
         <Chip active={favOnly} onClick={() => setFavOnly((v) => !v)}>
           <Star className={cn('size-3.5', favOnly && 'fill-current')} /> Favourites
         </Chip>
