@@ -8,7 +8,7 @@
  * Message out: { id, ok, blob?, width?, height?, error? }
  */
 
-// Bigger pictures read much slower and not better: 2000px keeps small print legible.
+// The reader asks for 2000px first and for more when the letters are small.
 const MIN_SIDE = 1200
 const MAX_SIDE = 2000
 

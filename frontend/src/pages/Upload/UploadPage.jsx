@@ -159,7 +159,8 @@ export function UploadPage() {
         if (u) URL.revokeObjectURL(u)
         return URL.createObjectURL(files[i])
       })
-      return { files, previews, size: { state: after < before ? 'smaller' : 'small', before, after } }
+      // The full-size photos are kept for reading the text: small print gets lost when made smaller.
+      return { files, originals: it.files, previews, size: { state: after < before ? 'smaller' : 'small', before, after } }
     })
     setTimeout(() => autoRead(id), 0)
   }
@@ -228,7 +229,7 @@ export function UploadPage() {
   /** Faces on the first photo: recognised people are filled in, others can be added. */
   const findItemFaces = async (id) => {
     const it = itemsRef.current.find((x) => x.id === id)
-    const photo = it?.files.find((f) => fileKind(f) === 'image')
+    const photo = (it?.originals?.length === it?.files.length ? it.originals : it?.files)?.find((f) => fileKind(f) === 'image')
     if (!it || it.status !== 'idle' || !photo) return
     const files = it.files
     try {
@@ -259,7 +260,8 @@ export function UploadPage() {
       try {
         const [{ readDocument }, { extractSuggestions, suggestNameVariants }] = await Promise.all([import('@/services/ocr'), import('@/services/extraction')])
         // The first pages are enough to fill in the details; the rest is read after the upload.
-        const read = await readDocument({ files: files.map((f, i) => ({ kind: 'original', mime_type: f.type, page_number: i + 1, blob: f })) }, { maxPages: 2 })
+        const source = it.originals?.length === files.length ? it.originals : files
+        const read = await readDocument({ files: source.map((f, i) => ({ kind: 'original', mime_type: f.type, page_number: i + 1, blob: f })) }, { maxPages: 2 })
         const now = itemsRef.current.find((x) => x.id === id)
         if (!now || now.files !== files) return // removed or cropped meanwhile; a new reading follows
         if (!read?.ok) {
@@ -331,7 +333,9 @@ export function UploadPage() {
         if (u) URL.revokeObjectURL(u)
         return URL.createObjectURL(file)
       })
-      return { files, previews, read: null, reading: 'idle' }
+      // The cropped page (full detail) is also what gets read.
+      const originals = it.originals?.length === it.files.length ? it.originals.map((f, i) => (i === index ? file : f)) : undefined
+      return { files, originals, previews, read: null, reading: 'idle' }
     })
     // Read again: a cropped page reads better.
     setTimeout(() => autoRead(itemId), 0)

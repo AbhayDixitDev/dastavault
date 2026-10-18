@@ -28,6 +28,13 @@ export const OCR_LANGUAGES = [
 ]
 
 const LANG_KEY = 'dv.ocrLang'
+/** Language data that ships with the app (scripts/copy-ocr.mjs); others download once. */
+const SHIPPED_LANGS = ['eng', 'hin']
+/** Long side of the picture for the quick reading and for the detailed one. */
+const QUICK_SIDE = 2000
+const DETAIL_SIDE = 3200
+/** A reading at least this sure is kept without a second look. */
+const SURE = 0.8
 const IDLE_MS = 2 * 60 * 1000
 const MIN_PDF_TEXT = 50
 
@@ -36,7 +43,9 @@ export function getDefaultLanguage() {
     const v = localStorage.getItem(LANG_KEY)
     if (v && v.split('+').every((c) => OCR_LANGUAGES.some((x) => x.code === c))) return v
   } catch { /* storage blocked */ }
-  return 'eng'
+  // Indian documents mix Hindi and English; English alone turns the Hindi
+  // lines into noise that spoils names and numbers (both ship with the app).
+  return 'eng+hin'
 }
 
 export function setDefaultLanguage(lang) {
@@ -77,14 +86,14 @@ function getPrepWorker() {
   return prepWorker
 }
 
-async function prepareImage(blob) {
+async function prepareImage(blob, maxSide) {
   const w = getPrepWorker()
   if (!w) return blob
   try {
     const id = ++prepSeq
     const result = await new Promise((resolve) => {
       prepPending.set(id, { resolve })
-      w.postMessage({ id, blob })
+      w.postMessage({ id, blob, maxSide })
       setTimeout(() => { if (prepPending.has(id)) { prepPending.delete(id); resolve({ ok: false }) } }, 20000)
     })
     return result?.ok && result.blob ? result.blob : blob
@@ -122,13 +131,13 @@ async function getReader(langs, onProgress) {
     const { createWorker } = await import('tesseract.js')
     const options = { logger: (m) => progressRouter(m) }
     // The reader and its English data ship with the app (scripts/copy-ocr.mjs):
-    // nothing to download before the first photo is read. Other languages
-    // still come from the CDN once and are cached.
+    // nothing to download before the first photo is read. English and Hindi ship
+    // with the app; other languages come from the CDN once and are cached.
     const local = (path) => new URL(`${import.meta.env.BASE_URL || '/'}tesseract/${path}`, window.location.href).href
     options.workerPath = import.meta.env?.VITE_TESSERACT_WORKER_PATH || local('worker.min.js')
     options.corePath = import.meta.env?.VITE_TESSERACT_CORE_PATH || local('core')
     if (import.meta.env?.VITE_TESSERACT_LANG_PATH) options.langPath = import.meta.env.VITE_TESSERACT_LANG_PATH
-    else if (langs === 'eng') options.langPath = local('lang')
+    else if (langs.split('+').every((l) => SHIPPED_LANGS.includes(l))) options.langPath = local('lang')
     const worker = await createWorker(langs.split('+'), 1, options)
     return worker
   })()
@@ -187,14 +196,25 @@ export async function readText(blob, { lang, onProgress } = {}) {
   busy++
   try {
     onProgress?.({ stage: 'preparing', progress: 0 })
-    const cleaned = await prepareImage(blob)
     const worker = await getReader(langs, onProgress)
     currentProgress = onProgress
-    const { data } = await worker.recognize(cleaned, {}, { text: true, blocks: true })
-    const text = String(data?.text || '').replace(/[ \t]+\n/g, '\n').trim()
-    const confidence = Math.max(0, Math.min(1, (data?.confidence || 0) / 100))
+    const pass = async (maxSide) => {
+      const cleaned = await prepareImage(blob, maxSide)
+      const { data } = await worker.recognize(cleaned, {}, { text: true, blocks: true })
+      const text = String(data?.text || '').replace(/[ \t]+\n/g, '\n').trim()
+      const confidence = Math.max(0, Math.min(1, (data?.confidence || 0) / 100))
+      return { text, confidence: text.length ? confidence : 0, data }
+    }
+    // Quick look first. A document that is small in the photo (a card on a
+    // table) has tiny letters at that size, so an unsure result is read again
+    // at full detail and the surer reading is kept.
+    let best = await pass(QUICK_SIDE)
+    if (best.confidence < SURE || best.text.replace(/\s/g, '').length < 25) {
+      const detailed = await pass(DETAIL_SIDE)
+      if (detailed.confidence > best.confidence) best = detailed
+    }
     onProgress?.({ stage: 'reading', progress: 1 })
-    return { ok: text.length > 0, text, confidence: text.length ? confidence : 0, words: wordsFrom(data), language: langs }
+    return { ok: best.text.length > 0, text: best.text, confidence: best.confidence, words: wordsFrom(best.data), language: langs }
   } catch {
     // A broken reader should not poison the next call.
     await terminateReader()

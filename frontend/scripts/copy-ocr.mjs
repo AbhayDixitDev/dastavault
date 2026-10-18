@@ -17,6 +17,7 @@ for (const f of ['tesseract-core-relaxedsimd-lstm.wasm.js', 'tesseract-core-simd
   cpSync(join(nm, 'tesseract.js-core', f), join(out, 'core', f))
 }
 cpSync(join(nm, '@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz'), join(out, 'lang', 'eng.traineddata.gz'))
+cpSync(join(nm, '@tesseract.js-data/hin/4.0.0_best_int/hin.traineddata.gz'), join(out, 'lang', 'hin.traineddata.gz'))
 console.log('Text reader copied to public/tesseract')
 
 // Face finder (faces on ID cards and photos): detector, landmarks, face fingerprints.
