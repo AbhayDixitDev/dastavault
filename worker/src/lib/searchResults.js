@@ -10,7 +10,7 @@ export async function enrichDocuments(db, wsId, docs) {
   if (!docs.length) return docs
   const ids = docs.map((d) => d.id)
   const [thumbs, people, tags] = await Promise.all([
-    db.from('document_files').select('id, document_id, version_id, page_number').eq('workspace_id', wsId).eq('kind', 'thumbnail').in('document_id', ids).order('page_number', { ascending: true, nullsFirst: false }),
+    db.from('document_files').select('id, document_id, version_id, page_number, kind, mime_type').eq('workspace_id', wsId).in('kind', ['thumbnail', 'processed', 'original']).like('mime_type', 'image/%').in('document_id', ids).order('page_number', { ascending: true, nullsFirst: false }),
     db.from('document_people').select('document_id, person:people!person_id(id, display_name)').eq('workspace_id', wsId).in('document_id', ids),
     db.from('document_tags').select('document_id, tag:tags!tag_id(id, name, color)').eq('workspace_id', wsId).in('document_id', ids),
   ])
@@ -24,17 +24,20 @@ export async function enrichDocuments(db, wsId, docs) {
     d.people = []
     d.tags = []
   }
-  // prefer the current version's page-1 thumbnail, else any thumbnail
+  // The first page's picture: of the current version first, then a thumbnail
+  // before the cleaned-up page before the photo as taken.
+  const KIND_RANK = { thumbnail: 0, processed: 1, original: 2 }
+  const rank = (d, t) => (t.version_id === d.current_version_id ? 0 : 10) + KIND_RANK[t.kind]
   for (const t of thumbRows) {
     const d = byDoc.get(t.document_id)
     if (!d) continue
-    const isCurrent = t.version_id === d.current_version_id
-    if (!d.thumbnail_file_id || (isCurrent && !d._thumbCurrent)) {
+    const r = rank(d, t)
+    if (d._thumbRank === undefined || r < d._thumbRank) {
       d.thumbnail_file_id = t.id
-      d._thumbCurrent = isCurrent
+      d._thumbRank = r
     }
   }
-  for (const d of docs) delete d._thumbCurrent
+  for (const d of docs) delete d._thumbRank
   for (const r of peopleRows) if (r.person) byDoc.get(r.document_id)?.people.push({ id: r.person.id, display_name: r.person.display_name })
   for (const r of tagRows) if (r.tag) byDoc.get(r.document_id)?.tags.push({ id: r.tag.id, name: r.tag.name, color: r.tag.color })
   return docs

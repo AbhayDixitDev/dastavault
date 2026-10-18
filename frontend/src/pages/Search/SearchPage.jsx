@@ -587,7 +587,7 @@ export function SearchPage() {
                   )}
                 </EmptyState>
               ) : (
-                <ul className={cn('flex flex-col gap-2', fastLoading && 'opacity-70')} aria-busy={fastLoading}>
+                <ul className={cn('grid grid-cols-2 gap-3 sm:grid-cols-3', fastLoading && 'opacity-70')} aria-busy={fastLoading}>
                   {list.map((r) => (
                     <li key={`${r.document?.id}-${r.kind ?? 'doc'}`}>
                       <ResultCard result={r} workspaceId={workspaceId} query={urlQ} resolved={results.resolved} people={people} types={types} />

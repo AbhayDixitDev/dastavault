@@ -58,7 +58,8 @@ function FavouriteButton({ on, onToggle, className }) {
  * `onToggleFavourite(doc)` is optional; when missing the star is read-only.
  */
 export function DocumentCard({ document: doc, workspaceId, view = 'grid', onToggleFavourite, to }) {
-  const thumb = pickThumbnailFile(doc.files)
+  // Search results carry only thumbnail_file_id, lists carry the files.
+  const thumbId = pickThumbnailFile(doc.files)?.id ?? doc.thumbnail_file_id ?? null
   const href = to ?? `/w/${workspaceId}/documents/${doc.id}`
   const processing = doc.status === 'processing'
   const failed = doc.status === 'failed'
@@ -66,7 +67,7 @@ export function DocumentCard({ document: doc, workspaceId, view = 'grid', onTogg
   if (view === 'list') {
     return (
       <Link to={href} className="flex items-center gap-3 rounded-2xl border bg-card p-3 transition-colors hover:bg-accent/60">
-        <SignedImage workspaceId={workspaceId} fileId={thumb?.id} alt="" className="size-14 shrink-0 rounded-xl bg-muted" fallback={<Placeholder type={doc.document_type} />} />
+        <SignedImage workspaceId={workspaceId} fileId={thumbId} alt="" className="size-14 shrink-0 rounded-xl bg-muted" fallback={<Placeholder type={doc.document_type} />} />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium">{doc.name}</span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -85,9 +86,9 @@ export function DocumentCard({ document: doc, workspaceId, view = 'grid', onTogg
   }
 
   return (
-    <Link to={href} className="group flex flex-col overflow-hidden rounded-2xl border bg-card shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-lift">
+    <Link to={href} className="group flex flex-col overflow-hidden rounded-2xl border bg-card shadow-soft transition-shadow [@media(hover:hover)]:hover:shadow-lift">
       <div className="relative">
-        <SignedImage workspaceId={workspaceId} fileId={thumb?.id} alt="" className="aspect-[4/3] w-full bg-muted" fallback={<Placeholder type={doc.document_type} />} />
+        <SignedImage workspaceId={workspaceId} fileId={thumbId} alt="" className="aspect-[4/3] w-full bg-muted" fallback={<Placeholder type={doc.document_type} />} />
         <FavouriteButton on={!!doc.is_favorite} onToggle={onToggleFavourite ? () => onToggleFavourite(doc) : null} className="absolute top-1 right-1 scale-90 bg-card/80 backdrop-blur-sm" />
         {processing && (
           <Badge variant="secondary" className="absolute bottom-2 left-2 gap-1 bg-card/90"><Clock className="size-3" /> Getting ready</Badge>

@@ -14,6 +14,12 @@ import './index.css'
 
 setupServiceWorker()
 
+// In the Android app the page itself never zooms (a pinch while scrolling made
+// cards grow); the document viewer zooms the picture on its own.
+if (window.Capacitor?.isNativePlatform?.()) {
+  document.querySelector('meta[name="viewport"]')?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover')
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Provider store={store}>
