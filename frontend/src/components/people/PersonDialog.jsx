@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, ImagePlus, X } from 'lucide-react'
+import { Camera, ChevronDown, ImagePlus, Trash2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { errorMessage } from '@/components/common/ErrorBox'
 import { findFaces, withFace } from '@/services/faces'
 import { ProfileCropper, loadPhoto } from './ProfileCropper'
@@ -41,6 +42,11 @@ export function PersonDialog({ open, onOpenChange, person, onSaved, initial }) {
   const form = useForm({ resolver: zodResolver(schema), defaultValues: EMPTY })
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = form
   const relation = watch('relation_label')
+  const listed = RELATION_LABELS_FOR_PERSON.filter((l) => l !== 'Other')
+  // "Other…" lets them type their own; a typed one that is not in the list shows the same way.
+  const [ownRelation, setOwnRelation] = useState(false)
+  const typedOwn = ownRelation || Boolean(relation && !listed.includes(relation))
+  const [more, setMore] = useState(false)
   const [face, setFace] = useState(null) // { crop, d? } new photo
   const [photoBusy, setPhotoBusy] = useState(false)
   const cameraRef = useRef(null)
@@ -89,6 +95,8 @@ export function PersonDialog({ open, onOpenChange, person, onSaved, initial }) {
     if (open) {
       reset(person ? { ...EMPTY, ...Object.fromEntries(Object.entries(person).filter(([k]) => k in EMPTY).map(([k, v]) => [k, v ?? ''])) } : { ...EMPTY, display_name: initial?.display_name || '' })
       setFace(person ? null : initial?.face || null)
+      setOwnRelation(false)
+      setMore(Boolean(person && (person.email || person.phone || person.date_of_birth || person.notes)))
     }
   }, [open, person, reset]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -113,79 +121,87 @@ export function PersonDialog({ open, onOpenChange, person, onSaved, initial }) {
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{person ? `Edit ${t.person_label.toLowerCase()}` : `Add ${t.person_label.toLowerCase()}`}</DialogTitle>
-          <DialogDescription>Documents can belong to this {t.person_label.toLowerCase()}.</DialogDescription>
+          <DialogDescription className="sr-only">Documents can belong to this {t.person_label.toLowerCase()}.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col gap-4">
           <DialogBody className="flex flex-col gap-4 py-1">
-          <div className="flex items-center gap-4">
-            <div className="relative size-20 shrink-0 overflow-hidden rounded-full border bg-muted">
-              {(face?.crop || person?.custom?.photo) ? (
-                <img src={face?.crop || person?.custom?.photo} alt="" className="size-full object-cover" />
-              ) : (
-                <span className="flex size-full items-center justify-center text-muted-foreground"><Camera className="size-7" /></span>
-              )}
-              {photoBusy && <span className="absolute inset-0 flex items-center justify-center bg-black/40"><Spinner className="text-white" /></span>}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Photo</p>
-              <p className="text-xs text-muted-foreground">With a photo, their face is recognised on ID cards and photos you add.</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={() => cameraRef.current?.click()}><Camera /> Take photo</Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => galleryRef.current?.click()}><ImagePlus /> Choose</Button>
-                {face && <Button type="button" size="sm" variant="ghost" onClick={() => setFace(null)}><X /> Remove</Button>}
-              </div>
-              <input ref={cameraRef} type="file" accept="image/*" capture="user" hidden onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = '' }} />
-              <input ref={galleryRef} type="file" accept="image/*" hidden onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = '' }} />
-            </div>
+          {/* The photo: tap it to take, choose or remove one. */}
+          <div className="flex flex-col items-center gap-1.5">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" aria-label="Photo" className="relative size-24 overflow-hidden rounded-full border bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {(face?.crop || person?.custom?.photo) ? (
+                    <img src={face?.crop || person?.custom?.photo} alt="" className="size-full object-cover" />
+                  ) : (
+                    <span className="flex size-full items-center justify-center text-muted-foreground"><Camera className="size-8" /></span>
+                  )}
+                  {photoBusy && <span className="absolute inset-0 flex items-center justify-center bg-black/40"><Spinner className="text-white" /></span>}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center">
+                <DropdownMenuItem onSelect={() => cameraRef.current?.click()}><Camera /> Take photo</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => galleryRef.current?.click()}><ImagePlus /> Choose photo</DropdownMenuItem>
+                {face && <DropdownMenuItem variant="destructive" onSelect={() => setFace(null)}><Trash2 /> Remove</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <p className="text-xs text-muted-foreground">{(face?.crop || person?.custom?.photo) ? 'Tap to change' : 'Add a photo to find their face in documents'}</p>
+            <input ref={cameraRef} type="file" accept="image/*" capture="user" hidden onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = '' }} />
+            <input ref={galleryRef} type="file" accept="image/*" hidden onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = '' }} />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="display_name">Name</Label>
-            <Input id="display_name" autoFocus {...register('display_name')} />
+            <Input id="display_name" {...register('display_name')} />
             {errors.display_name && <p className="text-sm text-destructive">{errors.display_name.message}</p>}
           </div>
           <div className="grid gap-2">
-            <Label>Who is this to you?</Label>
-            <div className="flex flex-wrap gap-2">
-              {RELATION_LABELS_FOR_PERSON.map((label) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setValue('relation_label', relation === label ? '' : label)}
-                  className={
-                    relation === label
-                      ? 'rounded-full bg-primary px-3 py-1 text-sm text-primary-foreground'
-                      : 'rounded-full border px-3 py-1 text-sm hover:bg-accent'
-                  }
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <Input placeholder="Or type your own" {...register('relation_label')} />
+            <Label htmlFor="relation">Who is this to you?</Label>
+            <select
+              id="relation"
+              value={typedOwn ? '__own' : relation || ''}
+              onChange={(e) => {
+                const v = e.target.value
+                setOwnRelation(v === '__own')
+                setValue('relation_label', v === '__own' ? '' : v)
+              }}
+              className="h-10 w-full rounded-lg border border-input bg-background px-3 text-base md:text-sm"
+            >
+              <option value="">Choose…</option>
+              {listed.map((label) => <option key={label} value={label}>{label}</option>)}
+              <option value="__own">Other…</option>
+            </select>
+            {typedOwn ? <Input placeholder="Type it, e.g. Uncle, Friend" autoFocus={ownRelation} {...register('relation_label')} /> : <input type="hidden" {...register('relation_label')} />}
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email (optional)</Label>
-              <Input id="email" type="email" {...register('email')} />
-              {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="phone">Phone (optional)</Label>
-              <Input id="phone" type="tel" {...register('phone')} />
-            </div>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="dob">Date of birth (optional)</Label>
-            <Input id="dob" type="date" {...register('date_of_birth')} />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="notes">Notes (optional)</Label>
-            <Textarea id="notes" rows={2} {...register('notes')} />
-          </div>
+          {more ? (
+            <>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" type="email" {...register('email')} />
+                  {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input id="phone" type="tel" {...register('phone')} />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="dob">Date of birth</Label>
+                <Input id="dob" type="date" {...register('date_of_birth')} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea id="notes" rows={2} {...register('notes')} />
+              </div>
+            </>
+          ) : (
+            <button type="button" onClick={() => setMore(true)} className="flex items-center gap-1 self-start text-sm font-medium text-primary">
+              <ChevronDown className="size-4" /> More details (phone, email, birthday)
+            </button>
+          )}
           </DialogBody>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={busy}>{busy && <Spinner />} {person ? 'Save' : 'Add'}</Button>
+          <DialogFooter className="flex-row">
+            <Button type="button" variant="outline" className="flex-1 sm:flex-none" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" className="flex-1 sm:flex-none" disabled={busy}>{busy && <Spinner />} {person ? 'Save' : 'Add'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
