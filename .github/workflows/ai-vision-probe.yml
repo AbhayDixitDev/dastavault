@@ -60,7 +60,7 @@ jobs:
           python3 - <<'PY'
           import base64, json, os, time, urllib.request
           img = open('form.jpg', 'rb').read(); b64 = base64.b64encode(img).decode()
-          sub = json.load(urllib.request.urlopen(urllib.request.Request(f"https://api.cloudflare.com/client/v4/accounts/{os.environ['CLOUDFLARE_ACCOUNT_ID']}/workers/subdomain", headers={'Authorization': 'Bearer ' + os.environ['CLOUDFLARE_API_TOKEN']})))['result']['subdomain']
+          sub = json.load(urllib.request.urlopen(urllib.request.Request(f"https://api.cloudflare.com/client/v4/accounts/{os.environ['CLOUDFLARE_ACCOUNT_ID']}/workers/subdomain", headers={'Authorization': 'Bearer ' + os.environ['CLOUDFLARE_API_TOKEN'], 'User-Agent': 'dastavault-probe/1.0'})))['result']['subdomain']
           url = f'https://dastavault-ai-probe.{sub}.workers.dev'
           prompt = ('Read this document photo, including handwriting. Reply with JSON only: '
                     '{"text": all text as written, "title": heading, "person_name": the person it belongs to, '
@@ -69,11 +69,11 @@ jobs:
           def run(model, body):
               for attempt in range(6):
                   try:
-                      req = urllib.request.Request(url, data=json.dumps({'model': model, 'body': body}).encode(), headers={'Content-Type': 'application/json'})
+                      req = urllib.request.Request(url, data=json.dumps({'model': model, 'body': body}).encode(), headers={'Content-Type': 'application/json', 'User-Agent': 'dastavault-probe/1.0'})
                       with urllib.request.urlopen(req, timeout=180) as r: out = json.load(r)
                       break
                   except Exception as e:
-                      out = {'err': str(e)}; time.sleep(5)
+                      out = {'err': str(e), 'body': getattr(e, 'read', lambda: b'')().decode()[:300]}; time.sleep(5)
               print(f'\n===== {model}'); print(json.dumps(out, indent=1, ensure_ascii=False)[:3500])
           time.sleep(10)
           run('@cf/meta/llama-3.2-11b-vision-instruct', {'prompt': 'agree'})
@@ -85,4 +85,5 @@ jobs:
           PY
       - name: Remove the probe worker
         if: always()
-        run: cd probe && npx -y wrangler@4 delete --name dastavault-ai-probe --force 2>&1 | tail -2 || true
+        run: |
+          curl -sS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/dastavault-ai-probe" | head -c 300
