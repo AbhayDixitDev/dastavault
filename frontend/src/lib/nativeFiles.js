@@ -40,8 +40,10 @@ export async function saveStoredFile(workspaceId, file, name) {
   }
   const id = toast.loading('Saving…')
   try {
-    const { folder } = await plugin.save({ url, name: name || fileName(file), mime: file.mime_type || 'application/octet-stream' })
-    toast.success(`Saved to ${folder}`, { id })
+    const { folder, queued } = await plugin.save({ url, name: name || fileName(file), mime: file.mime_type || 'application/octet-stream' })
+    // Android's download manager takes it from here, also in the background.
+    if (queued) toast.success(`Downloading to ${folder}. The notification shows when it is done.`, { id })
+    else toast.success(`Saved to ${folder}`, { id })
   } catch (err) {
     toast.error(err?.message || 'Could not save the file.', { id })
   }

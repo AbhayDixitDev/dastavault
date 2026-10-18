@@ -1,12 +1,11 @@
 package com.dastavault.app;
 
-import android.content.ContentResolver;
-import android.content.ContentValues;
+import android.app.DownloadManager;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
-import android.provider.MediaStore;
 
 import androidx.core.content.FileProvider;
 
@@ -82,50 +81,45 @@ public class FilesPlugin extends Plugin {
         return true;
     }
 
+    /**
+     * Saves a file to Downloads/DastaVault with Android's download manager: it
+     * goes on in the background and when the app is closed, continues after a
+     * lost connection, and shows its progress and the finished file in a
+     * notification. Resolves once the download is queued.
+     */
     @PluginMethod
     public void save(PluginCall call) {
         if (!validUrl(call)) return;
         String url = call.getString("url");
         String name = safeName(call.getString("name"));
         String mime = call.getString("mime", "application/octet-stream");
-        new Thread(() -> {
-            try {
-                String where;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    ContentResolver resolver = getContext().getContentResolver();
-                    ContentValues values = new ContentValues();
-                    values.put(MediaStore.Downloads.DISPLAY_NAME, name);
-                    values.put(MediaStore.Downloads.MIME_TYPE, mime);
-                    values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/DastaVault");
-                    values.put(MediaStore.Downloads.IS_PENDING, 1);
-                    Uri item = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-                    if (item == null) throw new IllegalStateException("Cannot create the file in Downloads");
-                    try (OutputStream out = resolver.openOutputStream(item)) {
-                        if (out == null) throw new IllegalStateException("Cannot write to Downloads");
-                        copy(url, out);
-                    } catch (Exception e) {
-                        resolver.delete(item, null, null);
-                        throw e;
-                    }
-                    values.clear();
-                    values.put(MediaStore.Downloads.IS_PENDING, 0);
-                    resolver.update(item, values, null, null);
-                    where = "Downloads/DastaVault";
-                } else {
-                    File dir = new File(getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "DastaVault");
-                    if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Cannot create " + dir);
-                    try (FileOutputStream out = new FileOutputStream(new File(dir, name))) {
-                        copy(url, out);
-                    }
-                    where = dir.getAbsolutePath();
-                }
-                JSObject result = new JSObject();
-                result.put("folder", where);
-                call.resolve(result);
-            } catch (Exception e) {
-                call.reject(e.getMessage() != null ? e.getMessage() : "Download failed", e);
+        try {
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url))
+                .setTitle(name)
+                .setDescription("DastaVault")
+                .setMimeType(mime)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true);
+            String where;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Public Downloads need no permission from Android 10 on.
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "DastaVault/" + name);
+                where = "Downloads/DastaVault";
+            } else {
+                request.setDestinationInExternalFilesDir(getContext(), Environment.DIRECTORY_DOWNLOADS, "DastaVault/" + name);
+                where = new File(getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "DastaVault").getAbsolutePath();
             }
-        }).start();
+            DownloadManager dm = (DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE);
+            long id = dm.enqueue(request);
+            JSObject result = new JSObject();
+            result.put("folder", where);
+            result.put("id", id);
+            result.put("queued", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject(e.getMessage() != null ? e.getMessage() : "Download failed", e);
+        }
     }
 
     @PluginMethod

@@ -117,7 +117,7 @@ function statusLine(s) {
     case 'latest': return 'You have the newest version.'
     case 'available': return 'A new version is ready to download.'
     case 'needs-permission': return 'Android needs your OK once: tap "Allow updates", switch on "Allow from this source", come back and tap "Try again".'
-    case 'downloading': return `Downloading… ${Math.round(s.progress * 100)}%`
+    case 'downloading': return s.waiting ? `Waiting for the internet… ${Math.round(s.progress * 100)}%` : `Downloading… ${Math.round(s.progress * 100)}%. It goes on if you leave the app.`
     case 'installing': return 'Tap Install on the screen that opened. Your data stays.'
     case 'failed': return s.error || 'Something went wrong.'
     default: return ''
@@ -136,7 +136,7 @@ export function AppUpdate() {
     const plugin = updater()
     if (!plugin) return undefined
     let listener
-    Promise.resolve(plugin.addListener?.('downloadProgress', (e) => set({ progress: Number(e?.progress) || 0 }))).then((l) => { listener = l })
+    Promise.resolve(plugin.addListener?.('downloadProgress', (e) => set({ progress: Number(e?.progress) || 0, waiting: Boolean(e?.waiting) }))).then((l) => { listener = l })
     checkForUpdate({ auto: true })
     const timer = setInterval(() => checkForUpdate({ auto: true }), CHECK_EVERY_MS)
     return () => {
