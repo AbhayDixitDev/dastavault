@@ -205,3 +205,20 @@ test('an undertaking photo: title, summary, and no stray numbers or amounts', ()
   assert.equal(byKey(s, 'amount'), undefined)
   assert.equal(byKey(s, 'organisation'), undefined)
 })
+
+test('mergeAiDetails: the model reads handwriting; its details win and the person is matched', async () => {
+  const { mergeAiDetails } = await import('../rules.js')
+  const rules = extractSuggestions('EMPLOYEE DATA CONFIDENTIALITY AND NON-DISCLOSURE\nUNDERTAKING\nI shall not retain any employee data, in whole or in part, in any form.')
+  const people = [{ id: 'p1', display_name: 'Abhay Dixit' }, { id: 'p2', display_name: 'Priya Dixit' }]
+  const s = mergeAiDetails(rules, {
+    document_type: 'agreement', person_name: 'Abhay Dixit', designation: 'Associate Software Developer', department: 'Engineering / Development',
+    issue_date: '2026-10-16', summary: 'Employee data confidentiality undertaking signed by Abhay Dixit on 16 Oct 2026.',
+  }, { people })
+  assert.equal(byKey(s, 'person_id').value, 'p1')
+  assert.equal(byKey(s, 'designation').value, 'Associate Software Developer')
+  assert.equal(byKey(s, 'issue_date').value, '2026-10-16')
+  assert.equal(byKey(s, 'summary').source, 'ai')
+  assert.equal(byKey(s, 'title').source, 'rules') // the model gave none: the rules' title stays
+  assert.equal(byKey(s, 'suggested_name').value, 'Abhay Dixit - Employee Data Confidentiality and Non-Disclosure Undertaking')
+  assert.equal(s.filter((x) => x.key === 'suggested_name').length, 1)
+})

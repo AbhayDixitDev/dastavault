@@ -15,7 +15,8 @@
  */
 import { api } from '@/services/api/client'
 import { readDocument } from '@/services/ocr'
-import { extractSuggestions, suggestDocumentName, chunkText, perceptualHash } from '@/services/extraction'
+import { readWithAi, combineRead } from '@/services/ocr/aiRead'
+import { extractSuggestions, suggestDocumentName, mergeAiDetails, chunkText, perceptualHash } from '@/services/extraction'
 import { getEmbeddingProvider, isEmbeddingResult, EMBEDDING_DIMENSION } from '@/services/embedding'
 
 export const STATUS = {
@@ -46,6 +47,17 @@ export async function processDocument({ workspaceId, documentId, versionId, file
       read = await readDocument({ files }, { lang, onProgress: (p) => say(onStatus, STATUS.READING, { step: 'text', progress: p?.progress ?? 0, page: p?.page, pages: p?.pages }) })
     } catch { /* readDocument never throws, belt and braces */ }
   }
+  // Handwriting (names, dates, values filled in by hand) is read by the
+  // server's vision model from the first page photo.
+  if (!read.ai) {
+    const photo = files.find((f) => f.kind === 'processed' && (f.page_number ?? 1) === 1 && /^image\//.test(f.mime_type || '') && f.blob)
+      || files.find((f) => (f.kind === 'original' || !f.kind) && /^image\//.test(f.mime_type || f.blob?.type || '') && f.blob)
+    if (photo) {
+      const blob = photo.blob.type ? photo.blob : new Blob([photo.blob], { type: photo.mime_type })
+      const ai = await readWithAi(workspaceId, [blob])
+      if (ai) read = combineRead(read, ai)
+    }
+  }
   try {
     await api.put(`${base}/text`, {
       version_id: versionId,
@@ -63,6 +75,7 @@ export async function processDocument({ workspaceId, documentId, versionId, file
   let suggestions = []
   try {
     suggestions = read.text ? extractSuggestions(read.text, { people, groups, workspaceKind }) : []
+    suggestions = mergeAiDetails(suggestions, read.ai, { people })
     if (read.text && !suggestions.some((s) => s.key === 'suggested_name')) {
       const name = suggestDocumentName({ suggestions, people, fallbackName: '' })
       if (name) suggestions.push({ key: 'suggested_name', value: name, confidence: 0.4, source: 'rules' })

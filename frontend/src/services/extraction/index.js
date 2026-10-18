@@ -5,7 +5,7 @@
  *   perceptualHash(imageBlob), hammingDistance(a, b)
  *   chunkText(text, pages)
  */
-export { extractSuggestions, suggestDocumentName, suggestNameVariants, detectDocumentType, findNumbers, findAmount, findEmail, findPhone, findOrganisation, matchPeople, matchGroups, findHolderName, findKeywords, makeSummary, findTitle } from './rules.js'
+export { extractSuggestions, suggestDocumentName, suggestNameVariants, detectDocumentType, findNumbers, findAmount, findEmail, findPhone, findOrganisation, matchPeople, matchGroups, findHolderName, findKeywords, makeSummary, findTitle, mergeAiDetails } from './rules.js'
 export { findDates, classifyDates } from './dates.js'
 export { chunkText } from './chunk.js'
 export { perceptualHash, hammingDistance, dHashFromGray } from './hash.js'

@@ -28,6 +28,7 @@ import reminders, { documentReminderRoutes } from './routes/reminders.js'
 import { sharesRoutes, publicShareRoutes } from './routes/shares.js'
 import aiKeys from './routes/aiKeys.js'
 import rag from './routes/rag.js'
+import readPage from './routes/readPage.js'
 import notes from './routes/notes.js'
 import home from './routes/home.js'
 import vault from './routes/vault.js'
@@ -120,6 +121,7 @@ ws.route('/albums', albums)
 ws.route('/reminders', reminders)
 ws.route('/shares', sharesRoutes)
 ws.route('/rag', rag)
+ws.route('/read', readPage) // page photo -> text + details, handwriting included
 ws.route('/notes', notes)
 ws.route('/', home) // /home, /stats
 app.route('/api/workspaces/:ws', ws)

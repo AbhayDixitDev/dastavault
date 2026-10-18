@@ -256,41 +256,64 @@ export function UploadPage() {
         return
       }
       const files = it.files
-      patch(id, { reading: 'reading' })
+      patch(id, { reading: 'reading', aiReading: false })
       try {
-        const [{ readDocument }, { extractSuggestions, suggestNameVariants }] = await Promise.all([import('@/services/ocr'), import('@/services/extraction')])
+        const [{ readDocument }, { readWithAi, combineRead, aiReadEnabled }, { extractSuggestions, suggestNameVariants, mergeAiDetails }] = await Promise.all([import('@/services/ocr'), import('@/services/ocr/aiRead'), import('@/services/extraction')])
         // The first pages are enough to fill in the details; the rest is read after the upload.
         const source = it.originals?.length === files.length ? it.originals : files
-        const read = await readDocument({ files: source.map((f, i) => ({ kind: 'original', mime_type: f.type, page_number: i + 1, blob: f })) }, { maxPages: 2 })
-        const now = itemsRef.current.find((x) => x.id === id)
-        if (!now || now.files !== files) return // removed or cropped meanwhile; a new reading follows
-        if (!read?.ok) {
-          patch(id, { reading: 'none', read: null })
-          return
+        // Removed, cropped or made smaller meanwhile. A crop starts its own reading; otherwise
+        // (the smaller copy arrived after this reading started) read again, or it stays "Reading…".
+        const gone = () => {
+          const now = itemsRef.current.find((x) => x.id === id)
+          if (!now) return true
+          if (now.files === files) return false
+          if (now.reading === 'reading') setTimeout(() => autoRead(id), 0)
+          return true
         }
+        const fill = (read, found) => {
+          const { people: ppl } = lookupRef.current
+          const get = (k) => found.find((x) => x.key === k)
+          patch(id, (cur) => {
+            const next = { reading: 'done', read, nameOptions: suggestNameVariants({ suggestions: found, people: ppl, fallbackName: cleanFileName(files[0].name) }) }
+            const name = get('suggested_name')
+            if (name && !cur.touched.name) next.name = name.value
+            const type = get('document_type')
+            if (type && type.confidence >= 0.45 && !cur.touched.type && !presets.document_type) next.document_type = type.value
+            const person = get('person_id')
+            if (person && !cur.touched.people && !cur.person_ids.includes(person.value)) next.person_ids = [...cur.person_ids, person.value]
+            const group = get('group_id')
+            if (group && !cur.touched.groups && !cur.group_ids.length) next.group_ids = [group.value]
+            const holder = get('holder_name')
+            next.found = {
+              type: type?.value || null,
+              holderName: !person && holder ? holder.value : null,
+              filled: Boolean(next.name || next.document_type || next.person_ids || cur.found?.filled),
+            }
+            return next
+          })
+        }
+        const read = await readDocument({ files: source.map((f, i) => ({ kind: 'original', mime_type: f.type, page_number: i + 1, blob: f })) }, { maxPages: 2 })
+        if (gone()) return
         const { people: ppl, groups: grps } = lookupRef.current
-        const found = extractSuggestions(read.text, { people: ppl, groups: grps })
-        const get = (k) => found.find((x) => x.key === k)
-        patch(id, (cur) => {
-          const next = { reading: 'done', read, nameOptions: suggestNameVariants({ suggestions: found, people: ppl, fallbackName: cleanFileName(files[0].name) }) }
-          const name = get('suggested_name')
-          if (name && !cur.touched.name) next.name = name.value
-          const type = get('document_type')
-          if (type && type.confidence >= 0.45 && !cur.touched.type && !presets.document_type) next.document_type = type.value
-          const person = get('person_id')
-          if (person && !cur.touched.people && !cur.person_ids.length) next.person_ids = [person.value]
-          const group = get('group_id')
-          if (group && !cur.touched.groups && !cur.group_ids.length) next.group_ids = [group.value]
-          const holder = get('holder_name')
-          next.found = {
-            type: type?.value || null,
-            holderName: !person && holder ? holder.value : null,
-            filled: Boolean(next.name || next.document_type || next.person_ids),
+        if (read?.ok) fill(read, extractSuggestions(read.text, { people: ppl, groups: grps }))
+
+        // Then the vision model, for what is written by hand (name, date, job title).
+        const photo = source.find((f) => /^image\//.test(f.type || ''))
+        if (photo && aiReadEnabled()) {
+          patch(id, { aiReading: true, ...(read?.ok ? {} : { reading: 'reading' }) })
+          const ai = await readWithAi(workspaceId, [photo])
+          if (gone()) return
+          patch(id, { aiReading: false })
+          if (ai) {
+            const both = combineRead(read, ai)
+            const lists = lookupRef.current
+            fill(both, mergeAiDetails(extractSuggestions(both.text, { people: lists.people, groups: lists.groups }), ai.details, { people: lists.people }))
+            return
           }
-          return next
-        })
+        }
+        if (!read?.ok) patch(id, { reading: 'none', read: null })
       } catch {
-        patch(id, { reading: 'none' })
+        patch(id, { reading: 'none', aiReading: false })
       }
     }
   }
@@ -385,8 +408,8 @@ export function UploadPage() {
     try {
       // Let the reading of the photo finish: it fills in the details and is reused below.
       const pendingRead = readJobs.current.get(item.id)
-      if (pendingRead && item.reading === 'reading') {
-        set({ statusText: 'Reading the photo...' })
+      if (pendingRead && (item.reading === 'reading' || item.aiReading)) {
+        set({ statusText: item.aiReading ? 'Reading the handwriting...' : 'Reading the photo...' })
         await pendingRead.catch(() => null)
         item = itemsRef.current.find((x) => x.id === item.id) || item
       }
@@ -604,6 +627,11 @@ export function UploadPage() {
                     {it.reading === 'reading' && (
                       <p className="flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">
                         <Spinner size="sm" /> Reading the {fileKind(it.files[0]) === 'pdf' ? 'PDF' : 'photo'} to fill in the details…
+                      </p>
+                    )}
+                    {it.reading === 'done' && it.aiReading && (
+                      <p className="flex items-center gap-2 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
+                        <Spinner size="sm" /> Reading the handwriting too…
                       </p>
                     )}
                     {it.reading === 'done' && it.found && (it.found.filled || it.found.holderName) && (

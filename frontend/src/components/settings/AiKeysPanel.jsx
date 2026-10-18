@@ -19,6 +19,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBox, errorMessage } from '@/components/common/ErrorBox'
 import { formatDate } from '@/utils/format'
+import { aiReadEnabled, setAiReadEnabled } from '@/services/ocr/aiRead'
 
 export const AI_PROVIDERS = [
   { key: 'openai', label: 'OpenAI', model: 'gpt-4o-mini', keyHint: 'sk-...' },
@@ -41,6 +42,7 @@ export function AiKeysPanel() {
   const [addOpen, setAddOpen] = useState(false)
   const [removeTarget, setRemoveTarget] = useState(null)
   const [testing, setTesting] = useState({}) // id -> true | { ok, model, latency_ms, error }
+  const [readHandwriting, setReadHandwriting] = useState(aiReadEnabled)
 
   const onTest = async (k) => {
     setTesting((t) => ({ ...t, [k.id]: true }))
@@ -65,6 +67,17 @@ export function AiKeysPanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      <Card>
+        <CardContent className="flex items-start gap-3 pt-6">
+          <div className="min-w-0 flex-1">
+            <Label htmlFor="ai-read" className="text-base font-semibold">Read handwriting</Label>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Names, dates and details written by hand are read by an AI model on our server (Cloudflare), from the first page photo. The photo is not kept there. Needs no key.
+            </p>
+          </div>
+          <Switch id="ai-read" checked={readHandwriting} onCheckedChange={(on) => { setReadHandwriting(on); setAiReadEnabled(on) }} />
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>AI keys</CardTitle>

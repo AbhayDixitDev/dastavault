@@ -522,8 +522,9 @@ export function suggestDocumentName(args) {
     // "Employee Data Confidentiality and Non-Disclosure Undertaking" says more than "Agreement".
     const title = valueOf(suggestions, 'title')
     if (title && !middle) {
-      const titled = [person, title, year].filter(Boolean).join(' - ')
-      if (titled.length <= 80) return titled
+      for (const titled of [[person, title, year], [person, title]].map((p) => p.filter(Boolean).join(' - '))) {
+        if (titled.length <= 80) return titled
+      }
     }
     const parts = [person, typeName, middle, year].filter((p) => p && String(p).trim())
     if (!parts.length) return fallbackName || ''
@@ -594,4 +595,40 @@ export function suggestNameVariants(args) {
     if (fallbackName) push(fallbackName)
   }
   return out.slice(0, 6)
+}
+
+/* ------------------------------------------------ the vision model */
+
+const AI_KEYS = ['title', 'summary', 'organisation', 'document_number', 'issue_date', 'expiry_date', 'amount', 'currency', 'designation', 'department', 'address', 'phone', 'email']
+
+/**
+ * mergeAiDetails(suggestions, details, { people })
+ * The model saw the page, handwriting included: its details replace the
+ * rules' guesses for the same keys, and the person it names is matched to
+ * the people in the workspace. The name is suggested again from the result.
+ */
+export function mergeAiDetails(suggestions = [], details = null, options = {}) {
+  if (!details || typeof details !== 'object') return suggestions
+  const people = Array.isArray(options.people) ? options.people : []
+  const byKey = new Map(suggestions.filter((s) => s.key !== 'suggested_name').map((s) => [s.key, s]))
+  const set = (key, value, confidence) => {
+    if (value === null || value === undefined || value === '') return
+    byKey.set(key, { key, value: String(value), confidence, source: 'ai' })
+  }
+  if (details.document_type && DOCUMENT_TYPE_LABELS[details.document_type]) set('document_type', details.document_type, 0.9)
+  for (const key of AI_KEYS) set(key, details[key], 0.85)
+  if (details.amount && !details.currency) set('currency', 'INR', 0.6)
+  if (details.person_name) {
+    const name = looksLikeName(details.person_name) || String(details.person_name).trim()
+    set('holder_name', name, 0.85)
+    const match = matchPeople(name, people)
+    if (match && match.ratio >= 0.75) {
+      set('person_name', match.person.display_name, 0.9)
+      if (match.person.id) set('person_id', match.person.id, 0.9)
+    }
+  }
+  const out = [...byKey.values()]
+  const name = suggestDocumentName({ suggestions: out, people, fallbackName: '' })
+  if (name) out.push({ key: 'suggested_name', value: name, confidence: 0.85, source: 'ai' })
+  return out
 }
