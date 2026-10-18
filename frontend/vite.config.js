@@ -4,9 +4,20 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
 
+// onnxruntime-web references its own .wasm files, so Vite copies them into
+// assets/ (26 MB). The embedding worker loads the runtime from public/ort
+// (wasmPaths), so those copies are never used and only make the APK too big.
+const dropUnusedOrtWasm = () => ({
+  name: 'drop-unused-ort-wasm',
+  generateBundle(_, bundle) {
+    for (const name of Object.keys(bundle)) if (/(^|\/)ort-wasm[^/]*\.wasm$/.test(name)) delete bundle[name]
+  },
+})
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
+    dropUnusedOrtWasm(),
     react(),
     tailwindcss(),
     VitePWA({
@@ -58,6 +69,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+  },
+  worker: {
+    plugins: () => [dropUnusedOrtWasm()],
   },
   build: {
     chunkSizeWarningLimit: 1500,
