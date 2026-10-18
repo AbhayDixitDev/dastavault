@@ -448,6 +448,10 @@ export const shareCreate = z.object({
   allow_download: z.boolean().default(false),
 })
 export const sharesQuery = z.object({ document_id: uuid().optional() })
+export const shareEmail = z.object({
+  to: z.string().trim().email().max(200),
+  message: z.string().trim().max(1000).optional(),
+})
 
 /* ---------- AI keys and RAG (section 6) ---------- */
 

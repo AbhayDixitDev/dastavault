@@ -202,6 +202,10 @@ export const documentsApi = baseApi.injectEndpoints({
       query: ({ workspaceId, shareId }) => ({ url: `/workspaces/${workspaceId}/shares/${shareId}`, method: 'DELETE' }),
       invalidatesTags: ['Shares'],
     }),
+    /** POST /shares/:id/email { to, message? } -> { sent, reason, url } */
+    emailShare: build.mutation({
+      query: ({ workspaceId, shareId, ...body }) => ({ url: `/workspaces/${workspaceId}/shares/${shareId}/email`, method: 'POST', body }),
+    }),
   }),
 })
 
@@ -232,4 +236,5 @@ export const {
   useGetSharesQuery,
   useCreateShareMutation,
   useDeleteShareMutation,
+  useEmailShareMutation,
 } = documentsApi

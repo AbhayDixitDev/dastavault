@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { errorMessage } from '@/components/common/ErrorBox'
+import { SendSection } from '@/components/documents/SendSection'
 import { formatDate, fromNow } from '@/utils/format'
 
 const EXPIRY = [
@@ -84,10 +85,11 @@ export function ShareDialog({ open, onOpenChange, workspaceId, document: doc, ca
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Share “{doc?.name}”</DialogTitle>
-          <DialogDescription>Anyone with the link can view this document until the link expires.</DialogDescription>
+          <DialogTitle className="line-clamp-2">Send “{doc?.name}”</DialogTitle>
+          <DialogDescription>By email, on WhatsApp, or as a link. Anyone with the link can view it until the link expires.</DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-5">
+          {canEdit && doc && <SendSection workspaceId={workspaceId} document={doc} shares={links} />}
           {canEdit && (
             <div className="flex flex-col gap-3 rounded-xl border p-3">
               <div className="grid gap-3 sm:grid-cols-2">

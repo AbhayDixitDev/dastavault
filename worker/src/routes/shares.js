@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { requireRole } from '../lib/workspace.js'
 import { unwrap, notFound, badRequest, HttpError } from '../lib/errors.js'
-import { parseJson, parseQuery, shareCreate, sharesQuery } from '../lib/validate.js'
+import { parseJson, parseQuery, shareCreate, shareEmail, sharesQuery } from '../lib/validate.js'
+import { sendShareEmail } from '../lib/email.js'
 import { activityFor } from '../lib/activity.js'
 import { isUuid, randomToken } from '../lib/ids.js'
 import { sha256Hex, timingSafeEqual, signFileUrl } from '../lib/signing.js'
@@ -19,19 +20,29 @@ const SHARE_URL_TTL_SECONDS = 15 * 60
 
 const passwordHash = (token, password) => sha256Hex(`${token}:${password}`)
 
-function shareUrl(env, share) {
-  if (share.kind !== 'link' || !share.token) return null
-  return `${String(env.APP_URL || '').replace(/\/$/, '')}/s/${share.token}`
+/**
+ * Where a share link opens: the web app when it is hosted (APP_URL), else the
+ * page this API serves itself at /s/:token (see index.js), so links work for
+ * anyone without the app.
+ */
+function shareBase(env, origin) {
+  const app = String(env.APP_URL || '').replace(/\/$/, '')
+  return app && !/\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(app) ? app : origin
 }
 
-function publicShare(env, s) {
+function shareUrl(env, share, origin) {
+  if (share.kind !== 'link' || !share.token) return null
+  return `${shareBase(env, origin)}/s/${share.token}`
+}
+
+function publicShare(env, s, origin) {
   return {
     id: s.id,
     document_id: s.document_id,
     kind: s.kind,
     target_id: s.kind === 'member' ? s.shared_with_user_id : s.kind === 'group' ? s.shared_with_group_id : null,
     token: s.kind === 'link' ? s.token : null,
-    url: shareUrl(env, s),
+    url: shareUrl(env, s, origin),
     expires_at: s.expires_at,
     allow_download: s.allow_download,
     has_password: Boolean(s.password_hash),
@@ -53,7 +64,8 @@ sharesRoutes.get('/', async (c) => {
   if (q.document_id) query = query.eq('document_id', q.document_id)
   if (m.rank < 40) query = query.or(`created_by.eq.${m.user_id},shared_with_user_id.eq.${m.user_id}`)
   const rows = unwrap(await query.order('created_at', { ascending: false }).limit(200), 'List shares')
-  return c.json({ shares: rows.map((s) => publicShare(c.env, s)) })
+  const origin = new URL(c.req.url).origin
+  return c.json({ shares: rows.map((s) => publicShare(c.env, s, origin)) })
 })
 
 // POST /shares { document_id, kind, target_id?, expires_in_hours?, password?, allow_download? } (editor+)
@@ -99,7 +111,35 @@ sharesRoutes.post('/', requireRole('editor'), async (c) => {
       data: { document_id: doc.id, share_id: share.id },
     })
   }
-  return c.json({ share: publicShare(c.env, share) }, 201)
+  return c.json({ share: publicShare(c.env, share, new URL(c.req.url).origin) }, 201)
+})
+
+// POST /shares/:id/email { to, message? } (editor+): sends a link share by email.
+// { sent: false, reason } when email is not set up; the app then opens the mail app.
+sharesRoutes.post('/:sid/email', requireRole('editor'), rateLimit('share-email', { max: 30, windowMs: 60 * 60_000, by: 'user' }), async (c) => {
+  const db = c.get('db')
+  const m = c.get('membership')
+  const user = c.get('user')
+  const sid = c.req.param('sid')
+  if (!isUuid(sid)) throw badRequest('Invalid share id')
+  const body = await parseJson(c, shareEmail)
+  const share = unwrap(await db.from('shares').select(SHARE_FIELDS).eq('workspace_id', m.workspace_id).eq('id', sid).maybeSingle(), 'Load share')
+  if (!share || share.revoked_at || share.kind !== 'link') throw notFound('Share link not found')
+  const doc = await loadDocument(db, m.workspace_id, share.document_id)
+  const profile = unwrap(await db.from('profiles').select('display_name, email').eq('id', user.id).maybeSingle(), 'Load profile')
+  const link = shareUrl(c.env, share, new URL(c.req.url).origin)
+  const result = await sendShareEmail(c.env, {
+    to: body.to,
+    senderName: profile?.display_name || profile?.email || 'Someone',
+    documentName: doc.name,
+    link,
+    expiresAt: share.expires_at,
+    message: body.message,
+  })
+  if (result.sent) {
+    await activityFor(c)('shared.email', 'document', doc.id, { share_id: share.id, to: body.to }, `emailed "${doc.name}" to ${body.to}`)
+  }
+  return c.json({ sent: result.sent, reason: result.reason ?? null, url: link })
 })
 
 // DELETE /shares/:id (editor+)

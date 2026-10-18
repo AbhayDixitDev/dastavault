@@ -4,6 +4,7 @@ import { secureHeaders } from 'hono/secure-headers'
 import { HttpError } from './lib/errors.js'
 import { withDb, createServiceClient } from './lib/supabase.js'
 import { reembedStale } from './lib/embed.js'
+import { sharePageHtml } from './lib/sharePage.js'
 import { requireAuth } from './lib/auth.js'
 import { requireWorkspace } from './lib/workspace.js'
 
@@ -55,17 +56,16 @@ app.use('*', async (c, next) => {
   }
 })
 
-app.use(
-  '*',
-  secureHeaders({
-    contentSecurityPolicy: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },
-    strictTransportSecurity: 'max-age=31536000; includeSubDomains',
-    referrerPolicy: 'no-referrer',
-    permissionsPolicy: { camera: [], microphone: [], geolocation: [] },
-    xContentTypeOptions: 'nosniff',
-    crossOriginResourcePolicy: 'cross-origin',
-  }),
-)
+// The share page (/s/:token) sets its own policy (it runs a script and shows images).
+const apiSecureHeaders = secureHeaders({
+  contentSecurityPolicy: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },
+  strictTransportSecurity: 'max-age=31536000; includeSubDomains',
+  referrerPolicy: 'no-referrer',
+  permissionsPolicy: { camera: [], microphone: [], geolocation: [] },
+  xContentTypeOptions: 'nosniff',
+  crossOriginResourcePolicy: 'cross-origin',
+})
+app.use('*', (c, next) => (c.req.path.startsWith('/s/') ? next() : apiSecureHeaders(c, next)))
 
 app.use('*', async (c, next) => {
   const allowed = String(c.env.ALLOWED_ORIGINS || '')
@@ -89,6 +89,18 @@ app.use('/api/*', withDb())
 /* ---------- routes ---------- */
 
 app.get('/', (c) => c.json({ service: 'dastavault-api', docs: '/api/health' }))
+
+// The page a share link opens, for anyone (no app needed).
+app.get('/s/:token', (c) => {
+  const nonce = crypto.randomUUID().replace(/-/g, '')
+  const html = sharePageHtml(c.req.param('token')).replace('<script>', `<script nonce="${nonce}">`)
+  return c.html(html, 200, {
+    'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`,
+    'Referrer-Policy': 'no-referrer',
+    'X-Content-Type-Options': 'nosniff',
+    'Cache-Control': 'no-store',
+  })
+})
 app.route('/api/health', health)
 app.route('/api/me', me)
 app.route('/api/notifications', notifications)

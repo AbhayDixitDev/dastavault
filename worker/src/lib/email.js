@@ -63,6 +63,27 @@ export function sendInviteEmail(env, { to, inviterName, workspaceName, roleKey, 
   return sendEmail(env, { to, subject, html, text, tags: ['invite'] })
 }
 
+export function sendShareEmail(env, { to, senderName, documentName, link, expiresAt, message }) {
+  const subject = `${senderName} sent you "${documentName}"`
+  const text = [
+    `${senderName} sent you "${documentName}" from DastaVault.`,
+    message ? `\n${message}\n` : '',
+    `Open it: ${link}`,
+    '',
+    `The link works until ${new Date(expiresAt).toUTCString()}.`,
+  ].join('\n')
+  const html = `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:16px;line-height:1.5;color:#1a1a1a">
+      <h2 style="margin:0 0 12px">${escapeHtml(documentName)}</h2>
+      <p>${escapeHtml(senderName)} sent you this document from DastaVault.</p>
+      ${message ? `<p style="padding:12px;background:#f4f4f5;border-radius:8px">${escapeHtml(message)}</p>` : ''}
+      <p><a href="${escapeHtml(link)}" style="display:inline-block;padding:12px 20px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Open the document</a></p>
+      <p style="font-size:14px;color:#555">Or copy this link: ${escapeHtml(link)}</p>
+      <p style="font-size:13px;color:#777">The link works until ${escapeHtml(new Date(expiresAt).toUTCString())}.</p>
+    </div>`
+  return sendEmail(env, { to, subject, html, text, tags: ['share'] })
+}
+
 export function sendOtpEmail(env, { to, code, minutes = 10 }) {
   const subject = 'Your DastaVault Chaabi reset code'
   const text = [

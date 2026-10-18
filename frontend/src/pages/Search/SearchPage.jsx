@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils'
 import { allDocuments } from '@/services/documents/allDocuments'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { DocumentCard } from '@/components/documents/DocumentCard'
+import { SearchExplore, TypeGrid, typeCounts } from '@/components/search/SearchExplore'
 
 function useDebounced(value, ms) {
   const [v, setV] = useState(value)
@@ -348,16 +349,25 @@ export function SearchPage() {
             )}
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-col gap-2">
-            <FilterChips filters={urlFilters} onChange={onFilters} workspaceId={workspaceId} terminology={terminology} />
-          </div>
+          {/* Filters: once something is searched; before that, the people and types below. */}
+          {hasQuery && (
+            <div className="flex flex-col gap-2">
+              <FilterChips filters={urlFilters} onChange={onFilters} workspaceId={workspaceId} terminology={terminology} />
+            </div>
+          )}
 
           {searchError && <ErrorBox error={searchError} onRetry={() => setNonce((n) => n + 1)} />}
 
           {/* No query yet: recent and saved */}
           {!hasQuery && !results && (
             <div className="flex flex-col gap-5">
+              <SearchExplore
+                workspaceId={workspaceId}
+                terminology={terminology}
+                types={types}
+                onPerson={(p) => submit('', { person_id: p.id })}
+                onType={(key) => submit('', { document_type: key })}
+              />
               {recent.length > 0 && (
                 <section className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
@@ -399,7 +409,7 @@ export function SearchPage() {
                   </ul>
                 </section>
               )}
-              {recent.length === 0 && saved.length === 0 && (
+              {recent.length === 0 && saved.length === 0 && people.length === 0 && (
                 <EmptyState icon={Search} title="Find anything in seconds" description={`Try a name, a document type or a year. Say "dad's passport" or "insurance 2025".`} />
               )}
             </div>
@@ -469,6 +479,16 @@ export function SearchPage() {
                   </Button>
                 )}
               </div>
+
+              {/* Someone picked: their kinds of documents, to narrow down (like a photo app). */}
+              {results.source !== 'image' && urlFilters.person_id && !urlFilters.document_type && list.length > 1 && (
+                <TypeGrid
+                  compact
+                  kinds={typeCounts(list.filter((r) => r.kind !== 'note').map((r) => r.document))}
+                  types={types}
+                  onType={(key) => submit(urlQ, { ...urlFilters, document_type: key })}
+                />
+              )}
 
               {list.length === 0 ? (
                 <EmptyState icon={Search} title="Nothing found. Try fewer words." description={results.source === 'image' ? 'No document looks like this photo yet.' : 'Check the spelling, or try a name or a document type on its own.'}>

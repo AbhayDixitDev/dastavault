@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowUpDown, FileText, LayoutGrid, List, Rows3, ScanLine, Search, SlidersHorizontal, Trash2, Upload, X } from 'lucide-react'
+import { ArrowUpDown, FileText, LayoutGrid, List, Rows3, ScanLine, Search, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useGetDocumentsQuery, useLazyGetDocumentsQuery, useUpdateDocumentMutation } from '@/store/api/documentsApi'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Spinner } from '@/components/ui/spinner'
@@ -161,15 +160,11 @@ export function DocumentsPage() {
       </header>
 
       <div className="mb-4 flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find by name" className="h-10 pl-9 pr-9" aria-label="Find by name" />
-          {q && (
-            <button type="button" aria-label="Clear" onClick={() => setQ('')} className="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:text-foreground">
-              <X className="size-4" />
-            </button>
-          )}
-        </div>
+        {/* Like a photo app: the search opens the search page (people, types, everything). */}
+        <Link to="../search" relative="path" className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-card px-3 text-sm text-muted-foreground">
+          <Search className="size-4 shrink-0" />
+          <span className="truncate">Search</span>
+        </Link>
         <Button variant="outline" size="icon" className="relative size-10 shrink-0" onClick={() => setFilterOpen(true)} aria-label="Filter" title="Filter">
           <SlidersHorizontal />
           {activeFilters > 0 && <Badge className="absolute -top-1.5 -right-1.5 size-5 justify-center rounded-full p-0 text-[10px]">{activeFilters}</Badge>}
