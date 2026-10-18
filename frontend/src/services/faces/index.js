@@ -21,6 +21,13 @@ const CROP_SIZE = 88
 /** Fingerprints closer than this belong to the same person. */
 export const SAME_PERSON = 0.5
 
+/**
+ * Closer than this (but not SAME_PERSON) is probably them: offered as a
+ * suggestion to confirm, not filled in. A face learnt from one photo often
+ * lands here on the next one (another angle or light).
+ */
+export const LIKELY_PERSON = 0.62
+
 let loading = null
 
 /**
@@ -135,13 +142,13 @@ export function personFaces(person) {
   return Array.isArray(faces) ? faces.filter((f) => Array.isArray(f) && f.length === 128) : []
 }
 
-/** The person whose face is closest to `d`, if close enough. */
-export function matchPerson(d, people = []) {
+/** The person whose face is closest to `d`, if closer than `limit`. */
+export function matchPerson(d, people = [], limit = SAME_PERSON) {
   let best = null
   for (const person of people) {
     for (const known of personFaces(person)) {
       const distance = faceDistance(d, known)
-      if (distance < SAME_PERSON && (!best || distance < best.distance)) best = { person, distance }
+      if (distance < limit && (!best || distance < best.distance)) best = { person, distance }
     }
   }
   return best

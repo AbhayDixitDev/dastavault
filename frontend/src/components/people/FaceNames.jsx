@@ -40,6 +40,7 @@ export function FaceNames({ faces, people, suggestion, personLabel = 'person', c
             people={people}
             personLabel={personLabel}
             suggestion={i === firstUnknown ? suggestion : null}
+            maybe={f.maybe_id ? people.find((p) => p.id === f.maybe_id) : null}
             creating={creating === i}
             onName={(text) => onName(i, text)}
             onPerson={(p) => onPerson(i, p)}
@@ -51,7 +52,7 @@ export function FaceNames({ faces, people, suggestion, personLabel = 'person', c
   )
 }
 
-function FaceLine({ face, people, personLabel, suggestion, creating, onName, onPerson, onCreate }) {
+function FaceLine({ face, people, personLabel, suggestion, maybe, creating, onName, onPerson, onCreate }) {
   const [focused, setFocused] = useState(false)
   // Someone just added may not be in the list yet: their name is kept on the face.
   const who = face.person_id ? people.find((p) => p.id === face.person_id) || { id: face.person_id, display_name: face.label || '' } : null
@@ -90,7 +91,12 @@ function FaceLine({ face, people, personLabel, suggestion, creating, onName, onP
             className="h-10 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/50"
           />
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {!typed && suggestion && (
+            {!typed && maybe && (
+              <button type="button" onClick={() => onPerson(maybe)} className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 py-0.5 pl-0.5 pr-2.5 text-xs font-medium text-primary">
+                <PersonAvatar person={maybe} className="size-5" /> {maybe.display_name}?
+              </button>
+            )}
+            {!typed && !maybe && suggestion && (
               <button type="button" onClick={() => onName(suggestion)} className="rounded-full border bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                 {suggestion}?
               </button>
@@ -112,7 +118,7 @@ function FaceLine({ face, people, personLabel, suggestion, creating, onName, onP
                 {creating ? <Spinner size="sm" /> : <UserPlus className="size-3.5" />} Add “{typed.trim()}”
               </button>
             )}
-            {!typed && !suggestion && <span className="text-xs text-muted-foreground">Leave empty if you do not know them.</span>}
+            {!typed && !suggestion && !maybe && <span className="text-xs text-muted-foreground">Leave empty if you do not know them.</span>}
           </div>
         </div>
       )}

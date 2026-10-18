@@ -233,12 +233,17 @@ export function UploadPage() {
     if (!it || it.status !== 'idle' || !photo) return
     const files = it.files
     try {
-      const { findFaces, matchPerson } = await import('@/services/faces')
+      const { findFaces, matchPerson, SAME_PERSON, LIKELY_PERSON } = await import('@/services/faces')
       const found = (await findFaces(photo)).slice(0, 6)
       const now = itemsRef.current.find((x) => x.id === id)
       if (!now || now.files !== files) return
       const { people: ppl } = lookupRef.current
-      const faces = found.map((f) => ({ ...f, person_id: matchPerson(f.d, ppl)?.person.id ?? null }))
+      const faces = found.map((f) => {
+        const best = matchPerson(f.d, ppl, LIKELY_PERSON)
+        // Close enough: filled in. A little further: offered to confirm with a tap.
+        if (best && best.distance < SAME_PERSON) return { ...f, person_id: best.person.id }
+        return { ...f, person_id: null, maybe_id: best?.person.id ?? null }
+      })
       patch(id, (cur) => {
         const next = { faces }
         const recognised = [...new Set(faces.map((f) => f.person_id).filter(Boolean))]
