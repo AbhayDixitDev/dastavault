@@ -333,7 +333,7 @@ export const chunksPut = z.object({
   version_id: uuid(),
   embedding_model: z.string().trim().min(1).max(120).default('Xenova/all-MiniLM-L6-v2'),
   embedding_version: z.string().trim().min(1).max(40).default('1'),
-  dimension: z.literal(EMBEDDING_DIMENSION, { message: `dimension must be ${EMBEDDING_DIMENSION}` }),
+  dimension: z.literal(EMBEDDING_DIMENSION, { message: `dimension must be ${EMBEDDING_DIMENSION}` }).optional(),
   chunks: z
     .array(
       z.object({
@@ -341,7 +341,8 @@ export const chunksPut = z.object({
         page_number: z.number().int().min(1).nullable().optional(),
         section: z.string().trim().max(200).nullable().optional(),
         content: z.string().min(1).max(4000),
-        embedding: embeddingVector,
+        // Made by the server (lib/embed.js); older apps still send their own.
+        embedding: embeddingVector.optional(),
         metadata: z.record(z.string(), z.unknown()).optional(),
       }),
     )

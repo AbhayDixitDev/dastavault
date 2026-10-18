@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
 import { HttpError } from './lib/errors.js'
 import { withDb, createServiceClient } from './lib/supabase.js'
+import { reembedStale } from './lib/embed.js'
 import { requireAuth } from './lib/auth.js'
 import { requireWorkspace } from './lib/workspace.js'
 
@@ -97,6 +98,14 @@ app.route('/api/ai/keys', aiKeys)
 app.route('/api/files', fileServeRoutes) // signature-authenticated
 app.route('/api/shares', publicShareRoutes) // public share links (token + optional password)
 
+// After a deploy: make again the chunk vectors of another model, a batch per call.
+// Called by .github/workflows/deploy-worker.yml with the service role key.
+app.post('/api/admin/reembed', async (c) => {
+  const given = c.req.header('x-admin-key') || ''
+  if (!c.env.SUPABASE_SERVICE_ROLE_KEY || given !== c.env.SUPABASE_SERVICE_ROLE_KEY) return c.json({ error: 'Forbidden' }, 403)
+  return c.json(await reembedStale(c.env, createServiceClient(c.env), { limit: 50 }))
+})
+
 // /api/workspaces, /api/workspaces/:ws, /api/workspaces/:ws/terminology (auth + per-handler membership)
 app.route('/api/workspaces', workspaces)
 
@@ -160,6 +169,15 @@ async function keepAlive(env) {
 
 export { app }
 
+async function runReembed(env) {
+  try {
+    const r = await reembedStale(env, createServiceClient(env), { limit: 50 })
+    if (r.done) console.log('[cron] re-embedded chunks:', r.done)
+  } catch (err) {
+    console.error('[cron] re-embed threw:', err?.message || err)
+  }
+}
+
 async function runReminders(env) {
   try {
     await processDueReminders(env)
@@ -171,6 +189,6 @@ async function runReminders(env) {
 export default {
   fetch: app.fetch,
   scheduled(event, env, ctx) {
-    ctx.waitUntil(Promise.all([keepAlive(env), runReminders(env)]))
+    ctx.waitUntil(Promise.all([keepAlive(env), runReminders(env), runReembed(env)]))
   },
 }

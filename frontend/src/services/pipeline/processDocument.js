@@ -6,7 +6,7 @@
  *
  *   read text -> PUT /documents/:id/text
  *   -> extract suggestions + name -> PUT /documents/:id/suggestions
- *   -> chunk + embed -> PUT /documents/:id/chunks
+ *   -> chunk -> PUT /documents/:id/chunks (the server makes the vectors)
  *
  *   reprocessDocument({ workspaceId, documentId, people, groups, onStatus })
  *     downloads the current version's files and runs the same pipeline.
@@ -17,7 +17,6 @@ import { api } from '@/services/api/client'
 import { readDocument } from '@/services/ocr'
 import { readWithAi, combineRead } from '@/services/ocr/aiRead'
 import { extractSuggestions, suggestDocumentName, mergeAiDetails, chunkText, perceptualHash } from '@/services/extraction'
-import { getEmbeddingProvider, isEmbeddingResult, EMBEDDING_DIMENSION } from '@/services/embedding'
 
 export const STATUS = {
   READING: 'Reading text from this document...',
@@ -123,18 +122,12 @@ export async function processDocument({ workspaceId, documentId, versionId, file
   try {
     const chunks = read.text ? chunkText(read.text, read.pages) : []
     if (chunks.length) {
-      const provider = getEmbeddingProvider()
-      const vectors = await provider.embed(chunks.map((c) => c.content))
-      if (isEmbeddingResult(vectors) && vectors.length === chunks.length) {
-        await api.put(`${base}/chunks`, {
-          version_id: versionId,
-          embedding_model: provider.name,
-          embedding_version: provider.version,
-          dimension: EMBEDDING_DIMENSION,
-          chunks: chunks.map((c, i) => ({ chunk_number: c.chunk_number, page_number: c.page_number, section: c.section || undefined, content: c.content, embedding: vectors[i] })),
-        })
-        result.embeddingsOk = true
-      }
+      // The server makes the vectors (Workers AI), the same way for every document and query.
+      await api.put(`${base}/chunks`, {
+        version_id: versionId,
+        chunks: chunks.map((c) => ({ chunk_number: c.chunk_number, page_number: c.page_number, section: c.section || undefined, content: c.content })),
+      })
+      result.embeddingsOk = true
     } else {
       result.embeddingsOk = result.textOk
     }

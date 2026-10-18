@@ -1,3 +1,4 @@
+import { embedQuery } from '../lib/embed.js'
 import { Hono } from 'hono'
 import { requireRole } from '../lib/workspace.js'
 import { unwrap, notFound, badRequest } from '../lib/errors.js'
@@ -51,7 +52,8 @@ async function retrieve(c, { question, embedding, documentId }) {
     docIds = (res.data || []).map((r) => r.document_id)
   }
 
-  // vector chunks
+  // vector chunks (the question's vector is made here, like the documents')
+  if (c.env.AI) embedding = await embedQuery(c.env, question)
   let vectorChunks = []
   if (embedding) {
     const res = await db.rpc('search_chunks', { ws: wsId, query_embedding: embedding, lim: 60 })

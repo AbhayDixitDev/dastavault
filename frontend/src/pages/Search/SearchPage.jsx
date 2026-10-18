@@ -7,15 +7,13 @@ import { useGetPeopleQuery } from '@/store/api/peopleApi'
 import {
   cleanFilters,
   useLazySearchQuery,
-  useHybridSearchMutation,
   useSuggestQuery,
   useGetSavedSearchesQuery,
   useCreateSavedSearchMutation,
   useDeleteSavedSearchMutation,
 } from '@/store/api/searchApi'
-import { embedQuery, warmUpSearch } from '@/services/search/embedding'
 import { voiceLangFor } from '@/services/search/voice'
-import { addRecentSearch, clearRecentSearches, getRecentSearches, getSearchByMeaning, removeRecentSearch, setSearchByMeaning } from '@/services/search/recent'
+import { addRecentSearch, clearRecentSearches, getRecentSearches, removeRecentSearch } from '@/services/search/recent'
 import { resolvedChips } from '@/services/search/matched'
 import { useDocumentTypes, typeLabel } from '@/services/search/documentTypes'
 import { FilterChips } from '@/components/search/FilterSheet'
@@ -101,23 +99,16 @@ export function SearchPage() {
   const [input, setInput] = useState(urlQ)
   const [focused, setFocused] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
-  const [meaningOn, setMeaningOnState] = useState(getSearchByMeaning)
   const [recent, setRecent] = useState(() => getRecentSearches(workspaceId))
   const [results, setResults] = useState(null)
-  const [meaningPending, setMeaningPending] = useState(false)
   const [nonce, setNonce] = useState(0)
   const [saveOpen, setSaveOpen] = useState(false)
   const runIdRef = useRef(0)
   const inputRef = useRef(null)
 
   const [runSearch, { isFetching: fastLoading, error: searchError }] = useLazySearchQuery()
-  const [runHybrid] = useHybridSearchMutation()
   const { data: people = [] } = useGetPeopleQuery(workspaceId, { skip: !workspaceId })
 
-  // Start the meaning model now; typing the first words gives it a head start.
-  useEffect(() => {
-    warmUpSearch()
-  }, [])
   const types = useDocumentTypes()
   const { data: saved = [] } = useGetSavedSearchesQuery(workspaceId, { skip: !workspaceId })
   const [deleteSaved] = useDeleteSavedSearchMutation()
@@ -140,42 +131,22 @@ export function SearchPage() {
     if (!workspaceId) return
     if (!hasQuery) {
       setResults(null)
-      setMeaningPending(false)
       return
     }
     const id = ++runIdRef.current
     const q = urlQ.trim()
     const filters = JSON.parse(filtersKey)
-    const wantMeaning = meaningOn && Boolean(q)
-    setMeaningPending(wantMeaning)
-    const embeddingPromise = wantMeaning ? embedQuery(q, { timeoutMs: 4000 }) : Promise.resolve(null)
-
+    // One call: the server matches the words (full text, names, numbers) and the
+    // meaning (vectors it makes itself), and puts the best of both first.
     ;(async () => {
       try {
-        const fast = await runSearch({ workspaceId, q, ...filters, limit: 40 }).unwrap()
-        if (runIdRef.current !== id) return
-        setResults({ ...fast, source: 'fast' })
+        const res = await runSearch({ workspaceId, q, ...filters, limit: 40 }).unwrap()
+        if (runIdRef.current === id) setResults({ ...res, source: 'search' })
       } catch {
         if (runIdRef.current === id) setResults(null)
       }
-      if (!wantMeaning) return
-      const embedding = await embeddingPromise
-      if (runIdRef.current !== id) return
-      if (!embedding) {
-        setMeaningPending(false)
-        return
-      }
-      try {
-        const hybrid = await runHybrid({ workspaceId, q, embedding, filters, limit: 40 }).unwrap()
-        if (runIdRef.current !== id) return
-        setResults({ ...hybrid, source: 'meaning' })
-      } catch {
-        /* keep the fast results */
-      } finally {
-        if (runIdRef.current === id) setMeaningPending(false)
-      }
     })()
-  }, [workspaceId, urlQ, filtersKey, meaningOn, hasQuery, nonce, runSearch, runHybrid])
+  }, [workspaceId, urlQ, filtersKey, hasQuery, nonce, runSearch])
 
   const submit = useCallback(
     (q = input, filters = urlFilters, extra = {}) => {
@@ -197,12 +168,6 @@ export function SearchPage() {
     if (t === 'ask') next.tab = 'ask'
     else delete next.tab
     setSearchParams(next)
-  }
-
-  const toggleMeaning = () => {
-    const on = !meaningOn
-    setSearchByMeaning(on)
-    setMeaningOnState(on)
   }
 
   const onFilters = (f) => submit(input, f)
@@ -347,7 +312,6 @@ export function SearchPage() {
                   className="[&_button]:size-9"
                   onResults={(res, file) => {
                     const runId = ++runIdRef.current
-                    setMeaningPending(false)
                     setResults({ ...res, source: 'image', fileName: file?.name, faces: null })
                     // A photo of someone: who it is, and the documents with their face.
                     Promise.all([import('@/services/faces'), allDocuments(workspaceId).catch(() => [])])
@@ -384,21 +348,9 @@ export function SearchPage() {
             )}
           </div>
 
-          {/* Filters and the meaning toggle */}
+          {/* Filters */}
           <div className="flex flex-col gap-2">
             <FilterChips filters={urlFilters} onChange={onFilters} workspaceId={workspaceId} terminology={terminology} />
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={toggleMeaning}
-                aria-pressed={meaningOn}
-                className={cn('inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50', meaningOn ? 'border-primary/30 bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent')}
-                title="Also finds documents that mean the same thing, even when the words differ."
-              >
-                <Sparkles className="size-3" /> Search by meaning: {meaningOn ? 'on' : 'off'}
-              </button>
-              {meaningPending && <span className="text-xs text-muted-foreground">Adding results by meaning...</span>}
-            </div>
           </div>
 
           {searchError && <ErrorBox error={searchError} onRetry={() => setNonce((n) => n + 1)} />}

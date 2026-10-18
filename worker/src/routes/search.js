@@ -1,3 +1,4 @@
+import { embedQuery } from '../lib/embed.js'
 import { Hono } from 'hono'
 import { unwrap } from '../lib/errors.js'
 import { parseQuery, parseJson, searchQuery, hybridSearchBody, imageSearchBody } from '../lib/validate.js'
@@ -140,6 +141,9 @@ export async function runSearch(c, { q = '', filters = {}, embedding = null, lim
   const rawQ = normalizeQuery(q)
   const resolved = rawQ ? await understandQuery(db, { wsId, userId: user.id, q: rawQ }) : emptyResolved()
   const ftsQuery = resolved.fts_query || rawQ
+  // The query's vector is made here, with the same model as the documents'
+  // (a vector sent by an older app comes from another model).
+  if (c.env.AI) embedding = rawQ ? await embedQuery(c.env, rawQ) : null
 
   const [ftsRows, vec] = await Promise.all([
     ftsSearch(db, wsId, ftsQuery),

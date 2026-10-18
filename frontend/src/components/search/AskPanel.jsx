@@ -4,7 +4,6 @@ import { Bot, FileText, KeyRound, Send, Sparkles, User } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useAskDocumentsMutation, useGetAskKeyStatusQuery } from '@/store/api/ragApi'
-import { embedQuery } from '@/services/search/embedding'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
@@ -125,7 +124,7 @@ export function AskPanel({ workspaceId: wsProp, documentId, className, compact =
       .map((m) => ({ role: m.role, content: m.role === 'user' ? m.content : m.answer }))
     setMessages((prev) => [...prev, { id: crypto.randomUUID?.() ?? String(Date.now()), role: 'user', content: q }])
     setThinking('Reading your documents...')
-    const embedding = await embedQuery(q, { timeoutMs: 4000 })
+    const embedding = null // the server makes the question's vector
     setThinking('Thinking...')
     try {
       const res = await ask({ workspaceId, question: q, embedding, document_id: documentId, history }).unwrap()

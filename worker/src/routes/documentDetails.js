@@ -1,3 +1,4 @@
+import { embedTexts, EMBED_MODEL, EMBED_VERSION } from '../lib/embed.js'
 import { Hono } from 'hono'
 import { requireRole } from '../lib/workspace.js'
 import { unwrap, notFound, badRequest } from '../lib/errors.js'
@@ -174,8 +175,18 @@ details.put('/:id/chunks', requireRole('editor'), async (c) => {
   const version = unwrap(await db.from('document_versions').select('id').eq('document_id', doc.id).eq('id', body.version_id).maybeSingle(), 'Load version')
   if (!version) throw notFound('Version not found')
 
+  // Vectors are made here, all with one model, so they compare with the queries' (lib/embed.js).
+  let vectors = null
+  try {
+    vectors = await embedTexts(c.env, body.chunks.map((ch) => ch.content))
+  } catch (err) {
+    console.warn('[chunks] embedding failed:', err?.message || err)
+  }
+  const model = vectors ? EMBED_MODEL : body.embedding_model
+  const modelVersion = vectors ? EMBED_VERSION : body.embedding_version
+
   unwrap(await db.from('document_chunks').delete().eq('document_id', doc.id).eq('version_id', version.id), 'Clear chunks')
-  const rows = body.chunks.map((ch) => ({
+  const rows = body.chunks.map((ch, i) => ({
     workspace_id: m.workspace_id,
     document_id: doc.id,
     version_id: version.id,
@@ -183,9 +194,9 @@ details.put('/:id/chunks', requireRole('editor'), async (c) => {
     page_number: ch.page_number ?? null,
     section: ch.section ?? null,
     content: ch.content,
-    embedding: ch.embedding,
-    embedding_model: body.embedding_model,
-    embedding_version: body.embedding_version,
+    embedding: vectors ? vectors[i] : ch.embedding ?? null,
+    embedding_model: model,
+    embedding_version: modelVersion,
     token_count: Math.ceil(ch.content.length / 4),
     metadata: ch.metadata || {},
     created_by: user.id,
@@ -193,7 +204,7 @@ details.put('/:id/chunks', requireRole('editor'), async (c) => {
   for (let i = 0; i < rows.length; i += 100) {
     unwrap(await db.from('document_chunks').insert(rows.slice(i, i + 100)), 'Save chunks')
   }
-  await activityFor(c)('indexed', 'document', doc.id, { version_id: version.id, chunks: rows.length, model: body.embedding_model }, `made "${doc.name}" searchable by meaning`)
+  await activityFor(c)('indexed', 'document', doc.id, { version_id: version.id, chunks: rows.length, model }, `made "${doc.name}" searchable by meaning`)
   return c.json({ count: rows.length })
 })
 

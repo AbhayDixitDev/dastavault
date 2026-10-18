@@ -153,6 +153,19 @@ jobs:
           done
           echo "::warning::The API did not answer the health check yet."
 
+      - name: Search vectors with the server's model
+        # Chunks embedded by the phone's old model are embedded again on the
+        # server (worker/src/lib/embed.js), 50 per call; the cron finishes the rest.
+        env:
+          SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          for i in $(seq 1 200); do
+            out=$(curl -sS -X POST -H "x-admin-key: $SERVICE_ROLE" "${{ steps.deploy.outputs.url }}/api/admin/reembed" || echo '{}')
+            echo "$out"
+            echo "$out" | grep -q '"left":0' && break
+            echo "$out" | grep -q '"done":' || break
+          done
+
       - name: Point the Android app at the API
         run: |
           URL="${{ steps.deploy.outputs.url }}"
