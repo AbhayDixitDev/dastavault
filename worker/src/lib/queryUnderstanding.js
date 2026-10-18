@@ -29,7 +29,7 @@ const TYPE_PHRASES = {
   'mark sheet': 'marksheet', 'aadhaar card': 'aadhaar', 'aadhar card': 'aadhaar', 'income tax': 'tax', 'tax return': 'tax',
 }
 
-const TYPE_WORDS = {
+export const TYPE_WORDS = {
   passport: 'passport', passports: 'passport', aadhaar: 'aadhaar', aadhar: 'aadhaar', adhar: 'aadhaar', aadhaars: 'aadhaar', pan: 'pan', pancard: 'pan',
   licence: 'driving_licence', license: 'driving_licence', licences: 'driving_licence', licenses: 'driving_licence', dl: 'driving_licence',
   voter: 'voter_id', voterid: 'voter_id', marksheet: 'marksheet', marksheets: 'marksheet', degree: 'degree', degrees: 'degree', diploma: 'degree',

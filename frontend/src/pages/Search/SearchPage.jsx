@@ -569,6 +569,21 @@ export function SearchPage() {
                 )}
               </div>
 
+              {/* A typo: what it may have meant is searched too. */}
+              {results.source !== 'image' && results.resolved?.did_you_mean?.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Also showing results for{' '}
+                  {results.resolved.did_you_mean.map((q, i) => (
+                    <span key={q}>
+                      {i > 0 && ', '}
+                      <button type="button" onClick={() => submit(q)} className="font-semibold text-primary underline-offset-2 hover:underline">
+                        {q}
+                      </button>
+                    </span>
+                  ))}
+                </p>
+              )}
+
               {/* Someone picked: their kinds of documents, to narrow down (like a photo app). */}
               {results.source !== 'image' && pickedPeople.length > 0 && personKinds.length > 1 && (
                 <TypeGrid compact kinds={personKinds} types={types} selected={pickedTypes} onType={toggleType} />

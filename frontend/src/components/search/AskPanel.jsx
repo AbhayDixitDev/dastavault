@@ -66,20 +66,24 @@ function NeedsKeyCard({ workspaceId }) {
   )
 }
 
+const SOURCES_SHOWN = 3
+
 function SourcesList({ sources, workspaceId }) {
+  const [all, setAll] = useState(false)
   if (!sources?.length) return null
+  const shown = all ? sources : sources.slice(0, SOURCES_SHOWN)
   return (
     <div className="mt-2 flex flex-col gap-1">
       <p className="text-xs font-medium text-muted-foreground">From your documents</p>
       <ul className="flex flex-col gap-1">
-        {sources.map((s, i) => (
+        {shown.map((s, i) => (
           <li key={s.chunk_id ?? `${s.document_id}-${i}`}>
             <Link to={citationHref(workspaceId, s) ?? '#'} className="flex items-start gap-2 rounded-lg border bg-card px-2 py-1.5 text-xs hover:bg-accent">
               <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary">{i + 1}</span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1 font-medium">
                   <FileText className="size-3" /> <span className="truncate">{s.document_name ?? 'Document'}</span>
-                  {s.page_number ? <span className="text-muted-foreground">page {s.page_number}</span> : null}
+                  {s.page_number ? <span className="shrink-0 text-muted-foreground">p. {s.page_number}</span> : null}
                 </span>
                 {s.snippet && <span className="line-clamp-2 text-muted-foreground">{s.snippet}</span>}
               </span>
@@ -87,6 +91,11 @@ function SourcesList({ sources, workspaceId }) {
           </li>
         ))}
       </ul>
+      {sources.length > SOURCES_SHOWN && (
+        <button type="button" onClick={() => setAll((v) => !v)} className="self-start text-xs font-medium text-primary">
+          {all ? 'Show fewer' : `Show ${sources.length - SOURCES_SHOWN} more`}
+        </button>
+      )}
     </div>
   )
 }
@@ -149,8 +158,9 @@ export function AskPanel({ workspaceId: wsProp, documentId, className, compact =
   }
 
   return (
-    <div className={cn('flex flex-col rounded-2xl border bg-card', compact ? 'min-h-[18rem]' : 'min-h-[24rem]', className)}>
-      <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto scroll-inside p-4">
+    // A set height: the messages scroll inside it and the question box stays at the bottom.
+    <div className={cn('flex flex-col rounded-2xl border bg-card', compact ? 'h-[min(32rem,70dvh)] min-h-[18rem]' : 'h-[calc(100dvh-16rem)] min-h-[20rem]', className)}>
+      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto scroll-inside p-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <span className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">

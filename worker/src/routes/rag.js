@@ -7,6 +7,7 @@ import { activityFor } from '../lib/activity.js'
 import { loadDocument, assertCanView, scopedDocumentsQuery } from '../lib/docs.js'
 import { understandQuery, normalizeQuery, DOCUMENT_TYPES } from '../lib/queryUnderstanding.js'
 import { rrfFuse } from '../lib/searchResults.js'
+import { correctQuery } from '../lib/spelling.js'
 import { NOT_FOUND_SENTENCE } from '../lib/ai/index.js'
 import { WELL_KNOWN_KEYS, valueColumns, loadSuggestions } from '../lib/metadata.js'
 import { resolveAiKey, providerFor } from './aiKeys.js'
@@ -42,19 +43,26 @@ async function retrieve(c, { question, embedding, documentId }) {
   const user = c.get('user')
   const wsId = m.workspace_id
   const understanding = await understandQuery(db, { wsId, userId: user.id, q: question })
-  const terms = (understanding.terms.length ? understanding.terms : normalizeQuery(question).split(' ')).filter((w) => w.length > 2 && !STOP.has(w)).slice(0, 8)
+  // Typos ("cobtact"): the words it may have meant are looked for too.
+  const fix = await correctQuery(db, wsId, question, { minLength: 5 })
+  const terms = [...(understanding.terms.length ? understanding.terms : normalizeQuery(question).split(' ')), ...(fix?.words ?? [])]
+    .filter((w) => w.length > 2 && !STOP.has(w))
+    .slice(0, 10)
 
   // documents from FTS (or the single document)
   let docIds = []
   if (documentId) docIds = [documentId]
   else {
-    const res = await db.rpc('search_documents_fts', { ws: wsId, q: understanding.fts_query || normalizeQuery(question), lim: 10 })
-    if (res.error) console.warn('[rag] search_documents_fts failed:', res.error.message)
-    docIds = (res.data || []).map((r) => r.document_id)
+    const queries = [understanding.fts_query || normalizeQuery(question), ...(fix?.queries ?? [])]
+    const all = await Promise.all(queries.map((q) => db.rpc('search_documents_fts', { ws: wsId, q, lim: 10 })))
+    for (const res of all) {
+      if (res.error) console.warn('[rag] search_documents_fts failed:', res.error.message)
+      for (const r of res.data || []) if (!docIds.includes(r.document_id)) docIds.push(r.document_id)
+    }
   }
 
   // vector chunks (the question's vector is made here, like the documents')
-  if (c.env.AI) embedding = await embedQuery(c.env, question)
+  if (c.env.AI) embedding = await embedQuery(c.env, fix ? `${question} ${fix.words.join(' ')}` : question)
   let vectorChunks = []
   if (embedding) {
     const res = await db.rpc('search_chunks', { ws: wsId, query_embedding: embedding, lim: 60 })

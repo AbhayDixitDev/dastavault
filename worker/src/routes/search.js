@@ -4,6 +4,7 @@ import { unwrap } from '../lib/errors.js'
 import { parseQuery, parseJson, searchQuery, hybridSearchBody, imageSearchBody } from '../lib/validate.js'
 import { understandQuery, normalizeQuery, hammingDistanceHex, DOCUMENT_TYPES } from '../lib/queryUnderstanding.js'
 import { enrichDocuments, rrfFuse, snippetOf } from '../lib/searchResults.js'
+import { correctQuery } from '../lib/spelling.js'
 import { scopedDocumentsQuery, groupDocumentIds } from '../lib/docs.js'
 import { isUuid } from '../lib/ids.js'
 
@@ -142,14 +143,25 @@ export async function runSearch(c, { q = '', filters = {}, embedding = null, lim
   const rawQ = normalizeQuery(q)
   const resolved = rawQ ? await understandQuery(db, { wsId, userId: user.id, q: rawQ }) : emptyResolved()
   const ftsQuery = resolved.fts_query || rawQ
+  // Typos ("cobtact"): the words it may have meant are searched too.
+  const fix = rawQ ? await correctQuery(db, wsId, rawQ) : null
   // The query's vector is made here, with the same model as the documents'
   // (a vector sent by an older app comes from another model).
-  if (c.env.AI) embedding = rawQ ? await embedQuery(c.env, rawQ) : null
+  if (c.env.AI) embedding = rawQ ? await embedQuery(c.env, fix ? `${rawQ} ${fix.words.join(' ')}` : rawQ) : null
 
-  const [ftsRows, vec] = await Promise.all([
+  const [ftsTyped, vec, ...ftsFixed] = await Promise.all([
     ftsSearch(db, wsId, ftsQuery),
     embedding ? vectorSearch(db, wsId, embedding) : Promise.resolve({ ids: [], best: new Map(), chunks: [] }),
+    ...(fix?.queries ?? []).map((fq) => ftsSearch(db, wsId, fq)),
   ])
+  // What matches the typed words first, then what matches the corrected ones.
+  const ftsRows = []
+  const seenFts = new Set()
+  for (const r of [ftsTyped, ...ftsFixed].flat()) {
+    if (seenFts.has(r.document_id)) continue
+    seenFts.add(r.document_id)
+    ftsRows.push(r)
+  }
   const ftsById = new Map(ftsRows.map((r, i) => [r.document_id, { ...r, position: i }]))
   const ftsIds = ftsRows.map((r) => r.document_id)
 
@@ -159,7 +171,7 @@ export async function runSearch(c, { q = '', filters = {}, embedding = null, lim
   query = (await applyFilters(db, m, query, filters, resolved)).query
   let docs = []
   const requireMatch = resolved.terms.length > 0 || resolved.document_numbers.length > 0 || (rawQ && !hasAnyFilter(filters, resolved))
-  const matchTerms = [...new Set([rawQ, ...resolved.terms].filter((t) => t && t.length >= 2))].slice(0, 6)
+  const matchTerms = [...new Set([rawQ, ...resolved.terms, ...(fix?.words ?? [])].filter((t) => t && t.length >= 2))].slice(0, 8)
   if (query) {
     const ors = []
     const candidateIds = [...new Set([...ftsIds, ...vec.ids, ...extraLists.flat()])]
@@ -251,6 +263,8 @@ export async function runSearch(c, { q = '', filters = {}, embedding = null, lim
       relation_words: resolved.relation_words,
       document_numbers: resolved.document_numbers,
       expiring: resolved.expiring,
+      // What a typo may have meant, also searched ("Also showing results for ...").
+      did_you_mean: fix?.queries ?? [],
     },
     next_cursor: null,
   }
