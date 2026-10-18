@@ -51,13 +51,19 @@ export function SearchExplore({ workspaceId, terminology, types, onPerson, onTyp
   )
 }
 
-/** Tiles of document types with how many there are. */
-export function TypeGrid({ kinds, types, onType, compact = false }) {
+/** Tiles of document types with how many there are; `compact` chips toggle (several can be picked). */
+export function TypeGrid({ kinds, types, onType, compact = false, selected = [] }) {
   if (compact) {
     return (
       <div className="flex flex-wrap gap-2">
         {kinds.map(({ key, count }) => (
-          <button key={key} type="button" onClick={() => onType(key)} className="inline-flex h-8 items-center gap-1.5 rounded-full border bg-card px-3 text-sm hover:bg-accent">
+          <button
+            key={key}
+            type="button"
+            aria-pressed={selected.includes(key)}
+            onClick={() => onType(key)}
+            className={cn('inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm', selected.includes(key) ? 'border-primary/40 bg-primary/10 text-primary' : 'bg-card hover:bg-accent')}
+          >
             {typeLabel(key, types)} <span className="text-xs text-muted-foreground">{count}</span>
           </button>
         ))}

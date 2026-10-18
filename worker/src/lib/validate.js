@@ -353,10 +353,12 @@ export const chunksQuery = z.object({ version_id: uuid().optional() })
 /* ---------- search (section 4) ---------- */
 
 const isoDateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+// person_id and document_type take one value or several joined by commas (any of them matches).
+const uuidList = z.string().trim().regex(/^[0-9a-f-]{36}(,[0-9a-f-]{36}){0,9}$/i, 'Invalid id').refine((v) => v.split(',').every((id) => UUID_RE.test(id)), 'Invalid id')
 export const searchFilters = z.object({
-  person_id: uuid().optional(),
+  person_id: uuidList.optional(),
   group_id: uuid().optional(),
-  document_type: z.string().trim().max(60).optional(),
+  document_type: z.string().trim().max(300).regex(/^[a-z0-9_]+(,[a-z0-9_]+){0,9}$/i, 'Invalid type').optional(),
   tag: z.string().trim().max(60).optional(),
   date_from: isoDateOnly.optional(),
   date_to: isoDateOnly.optional(),

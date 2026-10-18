@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Bot, FileText, KeyRound, Send, Sparkles, User } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useWorkspace } from '@/hooks/useWorkspace'
-import { useAskDocumentsMutation, useGetAskKeyStatusQuery } from '@/store/api/ragApi'
+import { useAskDocumentsMutation } from '@/store/api/ragApi'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
@@ -99,7 +99,6 @@ export function AskPanel({ workspaceId: wsProp, documentId, className, compact =
   const { workspaceId: wsFromRoute } = useWorkspace()
   const workspaceId = wsProp ?? wsFromRoute
   const [ask, { isLoading }] = useAskDocumentsMutation()
-  const { data: keyStatus } = useGetAskKeyStatusQuery(undefined, { skip: !workspaceId })
   const [messages, setMessages] = useState([])
   const [question, setQuestion] = useState('')
   const [thinking, setThinking] = useState('')
@@ -107,7 +106,6 @@ export function AskPanel({ workspaceId: wsProp, documentId, className, compact =
   const inputRef = useRef(null)
 
   const chips = suggestions ?? (documentId ? DOCUMENT_SUGGESTIONS : GENERAL_SUGGESTIONS)
-  const knownNoKey = keyStatus && keyStatus.hasKey === false
   const busy = isLoading || Boolean(thinking)
 
   useEffect(() => {
@@ -162,19 +160,13 @@ export function AskPanel({ workspaceId: wsProp, documentId, className, compact =
               <p className="font-medium">Ask your documents</p>
               <p className="text-sm text-muted-foreground">{documentId ? 'Ask anything about this document.' : 'Ask in plain words. Answers come with the page they were found on.'}</p>
             </div>
-            {knownNoKey ? (
-              <div className="w-full max-w-md text-left">
-                <NeedsKeyCard workspaceId={workspaceId} />
-              </div>
-            ) : (
-              <div className="flex flex-wrap justify-center gap-2">
-                {chips.map((c) => (
-                  <button key={c} type="button" onClick={() => send(c)} className="rounded-full border bg-background px-3 py-1.5 text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 outline-none">
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex flex-wrap justify-center gap-2">
+              {chips.map((c) => (
+                <button key={c} type="button" onClick={() => send(c)} className="rounded-full border bg-background px-3 py-1.5 text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 outline-none">
+                  {c}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

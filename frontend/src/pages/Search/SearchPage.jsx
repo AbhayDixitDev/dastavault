@@ -35,6 +35,7 @@ import { allDocuments } from '@/services/documents/allDocuments'
 import { PersonAvatar } from '@/components/people/PersonAvatar'
 import { DocumentCard } from '@/components/documents/DocumentCard'
 import { SearchExplore, TypeGrid, typeCounts } from '@/components/search/SearchExplore'
+import { addParam, listParam, toggleParam } from '@/services/search/multi'
 
 function useDebounced(value, ms) {
   const [v, setV] = useState(value)
@@ -180,28 +181,58 @@ export function SearchPage() {
     inputRef.current?.focus()
   }
 
-  // Suggestion rows for the dropdown under the box.
+  const pickedPeople = useMemo(() => listParam(urlFilters.person_id), [urlFilters.person_id])
+  const pickedTypes = useMemo(() => listParam(urlFilters.document_type), [urlFilters.document_type])
+  // A pick takes the place of what was typed to find it.
+  const addPerson = useCallback(
+    (id) => {
+      setInput('')
+      submit('', { ...urlFilters, person_id: addParam(urlFilters.person_id, id) })
+    },
+    [submit, urlFilters],
+  )
+  const addType = useCallback(
+    (key) => {
+      setInput('')
+      submit('', { ...urlFilters, document_type: addParam(urlFilters.document_type, key) })
+    },
+    [submit, urlFilters],
+  )
+  const togglePerson = (id) => submit(urlQ, { ...urlFilters, person_id: toggleParam(urlFilters.person_id, id) })
+  const toggleType = (key) => submit(urlQ, { ...urlFilters, document_type: toggleParam(urlFilters.document_type, key) })
+
+  // Suggestion rows under the box. People and types match on the phone as you type
+  // (no waiting); a tap adds them to the search, so several can be picked.
   const suggestionRows = useMemo(() => {
-    if (!suggest || !focused || suggestQ.length < 2 || input.trim() !== suggestQ) return []
+    const typed = input.trim().toLowerCase()
+    if (!focused || typed.length < 1) return []
     const rows = []
-    ;(suggest.people ?? []).slice(0, 4).forEach((p) => rows.push({ key: `p-${p.id}`, icon: User, label: p.display_name, hint: terminology.person_label, run: () => submit('', { ...urlFilters, person_id: p.id }) }))
-    ;(suggest.types ?? []).slice(0, 3).forEach((t) => {
-      const key = typeof t === 'string' ? t : t?.key ?? t?.value
-      if (!key) return
-      rows.push({ key: `t-${key}`, icon: FileText, label: typeLabel(key, types), hint: 'Document type', run: () => submit('', { ...urlFilters, document_type: key }) })
-    })
-    ;(suggest.tags ?? []).slice(0, 3).forEach((t) => {
-      const name = typeof t === 'string' ? t : t?.name
-      if (!name) return
-      rows.push({ key: `g-${name}`, icon: Tag, label: `#${name}`, hint: 'Tag', run: () => submit('', { ...urlFilters, tag: name }) })
-    })
-    ;(suggest.recent ?? []).slice(0, 3).forEach((r) => {
-      const q = typeof r === 'string' ? r : r?.query ?? r?.q
-      if (!q) return
-      rows.push({ key: `r-${q}`, icon: Clock, label: q, hint: 'Recent', run: () => submit(q) })
-    })
+    people
+      .filter((p) => {
+        if (pickedPeople.includes(p.id)) return false
+        const name = (p.display_name || '').toLowerCase()
+        return name.split(/\s+/).some((w) => w.startsWith(typed)) || (typed.length > 1 && name.includes(typed))
+      })
+      .slice(0, 5)
+      .forEach((p) => rows.push({ key: `p-${p.id}`, person: p, label: p.display_name, hint: terminology.person_label, run: () => addPerson(p.id) }))
+    types
+      .filter((t) => !pickedTypes.includes(t.key) && (typed.length > 1 ? (t.label || '').toLowerCase().includes(typed) || t.key.includes(typed.replace(/\s+/g, '_')) : (t.label || '').toLowerCase().startsWith(typed)))
+      .slice(0, 4)
+      .forEach((t) => rows.push({ key: `t-${t.key}`, icon: FileText, label: t.label, hint: 'Document type', run: () => addType(t.key) }))
+    if (suggest && suggestQ.length >= 2 && input.trim() === suggestQ) {
+      ;(suggest.tags ?? []).slice(0, 3).forEach((t) => {
+        const name = typeof t === 'string' ? t : t?.name
+        if (!name) return
+        rows.push({ key: `g-${name}`, icon: Tag, label: `#${name}`, hint: 'Tag', run: () => submit('', { ...urlFilters, tag: name }) })
+      })
+      ;(suggest.recent ?? []).slice(0, 3).forEach((r) => {
+        const q = typeof r === 'string' ? r : r?.query ?? r?.q
+        if (!q) return
+        rows.push({ key: `r-${q}`, icon: Clock, label: q, hint: 'Recent', run: () => submit(q) })
+      })
+    }
     return rows
-  }, [suggest, focused, suggestQ, input, terminology.person_label, types, urlFilters, submit])
+  }, [suggest, focused, suggestQ, input, people, types, pickedPeople, pickedTypes, terminology.person_label, urlFilters, submit, addPerson, addType])
 
   const onKeyDown = (e) => {
     if (!suggestionRows.length) {
@@ -224,6 +255,15 @@ export function SearchPage() {
   }
 
   const chips = results ? resolvedChips(results.resolved, { people, types }) : []
+  // The kinds of documents the picked people have; kept while a type narrows the list.
+  const kindsRef = useRef({ key: '', kinds: [] })
+  const personKinds = useMemo(() => {
+    const key = `${urlQ}|${urlFilters.person_id || ''}`
+    if (results?.source === 'search' && !urlFilters.document_type) {
+      kindsRef.current = { key, kinds: typeCounts((results.results || []).filter((r) => r.kind !== 'note').map((r) => r.document)) }
+    }
+    return kindsRef.current.key === key ? kindsRef.current.kinds : []
+  }, [results, urlQ, urlFilters.person_id, urlFilters.document_type])
   const showSuggestions = suggestionRows.length > 0
   const list = results?.results ?? []
   const emptyIdeas = useMemo(() => {
@@ -339,7 +379,7 @@ export function SearchPage() {
                       onClick={row.run}
                       className={cn('flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-accent', i === activeIdx && 'bg-accent')}
                     >
-                      <row.icon className="size-4 text-muted-foreground" />
+                      {row.person ? <PersonAvatar person={row.person} className="size-7" /> : <row.icon className="size-4 text-muted-foreground" />}
                       <span className="min-w-0 flex-1 truncate">{row.label}</span>
                       <span className="text-xs text-muted-foreground">{row.hint}</span>
                     </button>
@@ -349,10 +389,59 @@ export function SearchPage() {
             )}
           </div>
 
+          {/* What is picked: tap x to take one out. */}
+          {(pickedPeople.length > 0 || pickedTypes.length > 0) && (
+            <div className="flex flex-wrap gap-2">
+              {pickedPeople.map((id) => {
+                const p = people.find((x) => x.id === id)
+                return (
+                  <button key={id} type="button" onClick={() => togglePerson(id)} aria-label={`Remove ${p?.display_name ?? 'person'}`} className="inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 pl-1 pr-2.5 text-sm text-primary">
+                    <PersonAvatar person={p} className="size-7" />
+                    <span className="truncate">{p?.display_name ?? terminology.person_label}</span>
+                    <X className="size-3.5 shrink-0" />
+                  </button>
+                )
+              })}
+              {pickedTypes.map((key) => (
+                <button key={key} type="button" onClick={() => toggleType(key)} aria-label={`Remove ${typeLabel(key, types)}`} className="inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 text-sm text-primary">
+                  <FileText className="size-3.5 shrink-0" />
+                  <span className="truncate">{typeLabel(key, types)}</span>
+                  <X className="size-3.5 shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* More people to add with a tap (several can be picked). */}
+          {hasQuery && results?.source !== 'image' && people.some((p) => !pickedPeople.includes(p.id)) && (
+            <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 scroll-inside" aria-label={`Add ${terminology?.person_label_plural || 'people'}`}>
+              {people
+                .filter((p) => !pickedPeople.includes(p.id))
+                .map((p) => (
+                  <button key={p.id} type="button" onClick={() => addPerson(p.id)} className="flex w-14 shrink-0 flex-col items-center gap-1 text-center">
+                    <PersonAvatar person={p} className="size-12 border" />
+                    <span className="w-full truncate text-[11px]">{p.display_name}</span>
+                  </button>
+                ))}
+            </div>
+          )}
+
           {/* Filters: once something is searched; before that, the people and types below. */}
           {hasQuery && (
             <div className="flex flex-col gap-2">
-              <FilterChips filters={urlFilters} onChange={onFilters} workspaceId={workspaceId} terminology={terminology} />
+              {/* People and types picked show above; a pick here adds to them. */}
+              <FilterChips
+                filters={{ ...urlFilters, person_id: undefined, document_type: undefined }}
+                onChange={(f) =>
+                  Object.keys(cleanFilters(f)).length === 0 ? onFilters({}) : onFilters({
+                    ...f,
+                    person_id: f.person_id ? addParam(urlFilters.person_id, f.person_id) : urlFilters.person_id,
+                    document_type: f.document_type ? addParam(urlFilters.document_type, f.document_type) : urlFilters.document_type,
+                  })
+                }
+                workspaceId={workspaceId}
+                terminology={terminology}
+              />
             </div>
           )}
 
@@ -481,13 +570,8 @@ export function SearchPage() {
               </div>
 
               {/* Someone picked: their kinds of documents, to narrow down (like a photo app). */}
-              {results.source !== 'image' && urlFilters.person_id && !urlFilters.document_type && list.length > 1 && (
-                <TypeGrid
-                  compact
-                  kinds={typeCounts(list.filter((r) => r.kind !== 'note').map((r) => r.document))}
-                  types={types}
-                  onType={(key) => submit(urlQ, { ...urlFilters, document_type: key })}
-                />
+              {results.source !== 'image' && pickedPeople.length > 0 && personKinds.length > 1 && (
+                <TypeGrid compact kinds={personKinds} types={types} selected={pickedTypes} onType={toggleType} />
               )}
 
               {list.length === 0 ? (

@@ -13,7 +13,8 @@ let cachedCard = undefined
 
 /** Loads the documents agent's DocumentCard when it exists; null otherwise. */
 export function useDocumentCard() {
-  const [Card, setCard] = useState(cachedCard === undefined ? null : cachedCard)
+  // A function, so useState keeps the component instead of calling it.
+  const [Card, setCard] = useState(() => cachedCard ?? null)
   useEffect(() => {
     if (cachedCard !== undefined) return
     let alive = true

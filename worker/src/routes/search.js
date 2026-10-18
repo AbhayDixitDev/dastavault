@@ -20,6 +20,7 @@ const search = new Hono()
 const CANDIDATES = 200
 const RRF_K = 60
 const BOOST = { name: 0.05, person: 0.04, number: 0.04 }
+const listOf = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean)
 const escLike = (s) => String(s).replace(/[%_,()]/g, ' ').trim()
 
 const emptyResolved = () => ({ terms: [], person_ids: [], person_names: [], document_type: null, date_range: null, relation_words: [], document_numbers: [], expiring: false, fts_query: '' })
@@ -27,7 +28,7 @@ const emptyResolved = () => ({ terms: [], person_ids: [], person_names: [], docu
 /** Applies the request filters + resolved query filters in SQL. Returns null when nothing can match. */
 async function applyFilters(db, m, query, filters, resolved) {
   const wsId = m.workspace_id
-  const personIds = [...new Set([filters.person_id, ...resolved.person_ids].filter(Boolean))]
+  const personIds = [...new Set([...listOf(filters.person_id), ...resolved.person_ids])]
   if (personIds.length) {
     const rows = unwrap(await db.from('document_people').select('document_id').eq('workspace_id', wsId).in('person_id', personIds), 'Filter by person')
     const ids = [...new Set(rows.map((r) => r.document_id))]
@@ -39,8 +40,8 @@ async function applyFilters(db, m, query, filters, resolved) {
     if (!ids.length) return { query: null }
     query = query.in('id', ids)
   }
-  const type = filters.document_type || resolved.document_type
-  if (type) query = query.eq('document_type', type)
+  const types = filters.document_type ? listOf(filters.document_type) : resolved.document_type ? [resolved.document_type] : []
+  if (types.length) query = query.in('document_type', types)
   if (filters.tag) {
     let tagQuery = db.from('tags').select('id').eq('workspace_id', wsId)
     tagQuery = isUuid(filters.tag) ? tagQuery.eq('id', filters.tag) : tagQuery.ilike('name', escLike(filters.tag))
@@ -178,8 +179,8 @@ export async function runSearch(c, { q = '', filters = {}, embedding = null, lim
 
   const lists = [ftsIds, vec.ids, exactIds, ...extraLists].filter((l) => l.length)
   const fused = rrfFuse(lists, RRF_K)
-  const personSet = new Set([...(filters.person_id ? [filters.person_id] : []), ...resolved.person_ids])
-  const type = filters.document_type || resolved.document_type
+  const personSet = new Set([...listOf(filters.person_id), ...resolved.person_ids])
+  const typeSet = new Set(filters.document_type ? listOf(filters.document_type) : resolved.document_type ? [resolved.document_type] : [])
 
   await enrichDocuments(db, wsId, docs)
 
@@ -202,7 +203,7 @@ export async function runSearch(c, { q = '', filters = {}, embedding = null, lim
       matched.push('number')
       score += BOOST.number
     }
-    if (type && document.document_type === type) matched.push('type')
+    if (typeSet.has(document.document_type)) matched.push('type')
     if (filters.tag && document.tags.some((t) => t.id === filters.tag || t.name.toLowerCase() === filters.tag.toLowerCase())) matched.push('tag')
     if (extraBoost.has(document.id)) score += extraBoost.get(document.id)
     if (!score) score = 0.001 // filter-only match

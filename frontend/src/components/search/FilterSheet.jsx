@@ -246,16 +246,20 @@ function useChipLabels(workspaceId, filters, terminology) {
     const base = field.label ?? (field.key === 'person' ? terminology?.person_label ?? 'Person' : field.key === 'group' ? terminology?.group_label ?? 'Group' : field.key)
     switch (field.key) {
       case 'person': {
-        const v = filters.person_id
-        return v ? people.find((p) => p.id === v)?.display_name ?? base : base
+        const ids = String(filters.person_id ?? '').split(',').filter(Boolean)
+        if (!ids.length) return base
+        const first = people.find((p) => p.id === ids[0])?.display_name ?? base
+        return ids.length > 1 ? `${first} +${ids.length - 1}` : first
       }
       case 'group': {
         const v = filters.group_id
         return v ? groups.find((g) => g.id === v)?.name ?? base : base
       }
       case 'type': {
-        const v = filters.document_type
-        return v ? types.find((t) => t.key === v)?.label ?? v : base
+        const keys = String(filters.document_type ?? '').split(',').filter(Boolean)
+        if (!keys.length) return base
+        const first = types.find((t) => t.key === keys[0])?.label ?? keys[0]
+        return keys.length > 1 ? `${first} +${keys.length - 1}` : first
       }
       case 'date': {
         const { date_from: f, date_to: t } = filters

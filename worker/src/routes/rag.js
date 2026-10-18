@@ -10,6 +10,7 @@ import { rrfFuse } from '../lib/searchResults.js'
 import { NOT_FOUND_SENTENCE } from '../lib/ai/index.js'
 import { WELL_KNOWN_KEYS, valueColumns, loadSuggestions } from '../lib/metadata.js'
 import { resolveAiKey, providerFor } from './aiKeys.js'
+import { workersAiProvider } from '../lib/ai/workersAi.js'
 
 /**
  * "Ask your documents" (contract section 6). Mounted at /api/workspaces/:ws/rag
@@ -96,9 +97,10 @@ rag.post('/ask', async (c) => {
   const user = c.get('user')
   const body = await parseJson(c, ragAsk)
 
+  // The user's own key when there is one, else the free model (no key needed).
   const resolved = await resolveAiKey(db, c.env, user.id, body.key_id)
-  if (!resolved) return aiKeyRequired(c)
-  const provider = await providerFor(c.env, resolved)
+  if (!resolved && !c.env.AI) return aiKeyRequired(c)
+  const provider = resolved ? await providerFor(c.env, resolved) : workersAiProvider(c.env)
 
   if (body.document_id) {
     const doc = await loadDocument(db, m.workspace_id, body.document_id)
@@ -131,7 +133,7 @@ rag.post('/ask', async (c) => {
     const ch = chunks[n - 1]
     return { n, document_id: ch.document_id, document_name: docs.get(ch.document_id)?.name || null, page_number: ch.page_number ?? null, chunk_id: ch.id, snippet: ch.content.slice(0, 300) }
   })
-  await db.from('ai_provider_keys').update({ last_used_at: new Date().toISOString() }).eq('id', resolved.row.id)
+  if (resolved) await db.from('ai_provider_keys').update({ last_used_at: new Date().toISOString() }).eq('id', resolved.row.id)
   await activityFor(c)('ai.asked', 'workspace', m.workspace_id, { provider: provider.name, model: out.model, chunks: chunks.length, not_found: notFound, document_id: body.document_id || null }, 'asked the documents a question')
   return c.json({ answer: notFound ? NOT_FOUND_SENTENCE : answer, not_found: notFound, sources, provider: provider.name, model: out.model || provider.model, usage: out.usage })
 })
