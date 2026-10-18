@@ -14,8 +14,8 @@ jobs:
       - name: Make a form with handwriting
         run: |
           pip install -q pillow
-          curl -sSL -o caveat.ttf "https://github.com/google/fonts/raw/main/ofl/caveat/Caveat%5Bwght%5D.ttf"
-          curl -sSL -o hand2.ttf "https://github.com/google/fonts/raw/main/ofl/homemadeapple/HomemadeApple-Regular.ttf"
+          curl -fsSL -o caveat.ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/caveat/Caveat%5Bwght%5D.ttf"
+          curl -fsSL -o hand2.ttf "https://raw.githubusercontent.com/google/fonts/main/apache/homemadeapple/HomemadeApple-Regular.ttf"
           python3 - <<'PY'
           from PIL import Image, ImageDraw, ImageFont
           W, H = 1200, 1500
