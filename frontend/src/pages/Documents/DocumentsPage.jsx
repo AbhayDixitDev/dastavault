@@ -4,7 +4,6 @@ import { toast } from 'sonner'
 import { ArrowUpDown, FileText, LayoutGrid, List, Rows3, ScanLine, Search, SlidersHorizontal, Trash2, Upload, X } from 'lucide-react'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useGetDocumentsQuery, useLazyGetDocumentsQuery, useUpdateDocumentMutation } from '@/store/api/documentsApi'
-import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -151,19 +150,18 @@ export function DocumentsPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader
-        title="Documents"
-        description="Everything you have saved, in one place."
-        actions={canEdit && (
+      <header className="mb-3 flex items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-semibold tracking-tight">Documents</h1>
+        {canEdit && (
           <div className="flex gap-2">
-            <Button variant="outline" asChild><Link to="../scan" relative="path"><ScanLine /> Scan</Link></Button>
-            <Button asChild><Link to="../upload" relative="path"><Upload /> Upload</Link></Button>
+            <Button variant="outline" size="icon" className="size-10" asChild aria-label="Scan" title="Scan"><Link to="../scan" relative="path"><ScanLine /></Link></Button>
+            <Button size="icon" className="size-10" asChild aria-label="Upload" title="Upload"><Link to="../upload" relative="path"><Upload /></Link></Button>
           </div>
         )}
-      />
+      </header>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[12rem] flex-1">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find by name" className="h-10 pl-9 pr-9" aria-label="Find by name" />
           {q && (
@@ -172,13 +170,13 @@ export function DocumentsPage() {
             </button>
           )}
         </div>
-        <Button variant="outline" size="lg" className="h-10" onClick={() => setFilterOpen(true)}>
-          <SlidersHorizontal /> Filter
-          {activeFilters > 0 && <Badge className="ml-1 size-5 justify-center rounded-full p-0">{activeFilters}</Badge>}
+        <Button variant="outline" size="icon" className="relative size-10 shrink-0" onClick={() => setFilterOpen(true)} aria-label="Filter" title="Filter">
+          <SlidersHorizontal />
+          {activeFilters > 0 && <Badge className="absolute -top-1.5 -right-1.5 size-5 justify-center rounded-full p-0 text-[10px]">{activeFilters}</Badge>}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="lg" className="h-10"><ArrowUpDown /> <span className="hidden sm:inline">{sortLabel}</span><span className="sm:hidden">Sort</span></Button>
+            <Button variant="outline" size="icon" className="size-10 shrink-0" aria-label={`Sort: ${sortLabel}`} title={`Sort: ${sortLabel}`}><ArrowUpDown /></Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuRadioGroup value={sort} onValueChange={setSort}>
@@ -188,7 +186,7 @@ export function DocumentsPage() {
         </DropdownMenu>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="lg" className="h-10"><Rows3 /> <span className="hidden sm:inline">{GROUP_BY_OPTIONS.find((g) => g.key === groupBy)?.label}</span><span className="sm:hidden">Group</span></Button>
+            <Button variant="outline" size="icon" className="size-10 shrink-0" aria-label={`Group: ${GROUP_BY_OPTIONS.find((g) => g.key === groupBy)?.label}`} title="Group"><Rows3 /></Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuRadioGroup value={groupBy} onValueChange={setGroupBy}>
@@ -196,10 +194,17 @@ export function DocumentsPage() {
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-        <div className="flex overflow-hidden rounded-md border">
-          <button type="button" aria-label="Grid view" aria-pressed={view === 'grid'} onClick={() => setView('grid')} className={`flex h-10 w-10 items-center justify-center ${view === 'grid' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}><LayoutGrid className="size-4" /></button>
-          <button type="button" aria-label="List view" aria-pressed={view === 'list'} onClick={() => setView('list')} className={`flex h-10 w-10 items-center justify-center border-l ${view === 'list' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}><List className="size-4" /></button>
-        </div>
+        {/* One button: shows the other view. */}
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-10 shrink-0"
+          aria-label={view === 'grid' ? 'List view' : 'Grid view'}
+          title={view === 'grid' ? 'List view' : 'Grid view'}
+          onClick={() => setView(view === 'grid' ? 'list' : 'grid')}
+        >
+          {view === 'grid' ? <List /> : <LayoutGrid />}
+        </Button>
       </div>
 
       {error && <ErrorBox error={error} onRetry={refetch} className="mb-4" />}

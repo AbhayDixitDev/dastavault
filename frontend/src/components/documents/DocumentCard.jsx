@@ -88,7 +88,7 @@ export function DocumentCard({ document: doc, workspaceId, view = 'grid', onTogg
     <Link to={href} className="group flex flex-col overflow-hidden rounded-2xl border bg-card shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-lift">
       <div className="relative">
         <SignedImage workspaceId={workspaceId} fileId={thumb?.id} alt="" className="aspect-[4/3] w-full bg-muted" fallback={<Placeholder type={doc.document_type} />} />
-        <FavouriteButton on={!!doc.is_favorite} onToggle={onToggleFavourite ? () => onToggleFavourite(doc) : null} className="absolute top-1 right-1 bg-card/80 backdrop-blur-sm" />
+        <FavouriteButton on={!!doc.is_favorite} onToggle={onToggleFavourite ? () => onToggleFavourite(doc) : null} className="absolute top-1 right-1 scale-90 bg-card/80 backdrop-blur-sm" />
         {processing && (
           <Badge variant="secondary" className="absolute bottom-2 left-2 gap-1 bg-card/90"><Clock className="size-3" /> Getting ready</Badge>
         )}
@@ -97,8 +97,8 @@ export function DocumentCard({ document: doc, workspaceId, view = 'grid', onTogg
           <Badge variant="secondary" className="absolute bottom-2 left-2 bg-card/90">{doc.page_count} pages</Badge>
         )}
       </div>
-      <div className="flex flex-col gap-1.5 p-3">
-        <span className="line-clamp-2 leading-snug font-medium">{doc.name}</span>
+      <div className="flex flex-col gap-1.5 p-2.5">
+        <span className="line-clamp-2 text-sm leading-snug font-medium">{doc.name}</span>
         <div className="flex items-center justify-between gap-2">
           <Badge variant="outline" className="truncate">{documentTypeLabel(doc.document_type)}</Badge>
           <PeopleAvatars people={doc.people} />
