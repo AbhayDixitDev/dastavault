@@ -4,28 +4,59 @@ import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 
 const OUT_SIZE = 512
+const MAX_SIDE = 2048
+
+/**
+ * The picked photo as a canvas of at most 2048px, decoded once. Phone camera
+ * photos are 12-50 MP: kept at full size (once for the cropper, once for face
+ * finding) they can use up the app's memory and close it.
+ */
+export async function loadPhoto(file) {
+  const url = URL.createObjectURL(file)
+  try {
+    const image = new Image()
+    image.src = url
+    await image.decode()
+    const scale = Math.min(1, MAX_SIDE / Math.max(image.naturalWidth, image.naturalHeight))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
+    image.src = ''
+    return canvas
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
 
 /**
  * Fit a photo (fills its parent; PersonDialog shows it full screen) into a round profile frame. Drag to move, pinch or
- * use the slider to zoom. `face` ({ x, y, w, h } as parts of the photo) places
- * the frame on a face found beforehand. onDone(canvas) gets a 512px square.
+ * use the slider to zoom. `photo` is a canvas from loadPhoto. `face` ({ x, y, w, h } as parts of the photo) moves
+ * the frame onto the face, unless the photo was moved already; undefined while still looking. onDone(canvas) gets a 512px square.
  */
-export function ProfileCropper({ file, face, onDone, onCancel }) {
-  const [img, setImg] = useState(null)
+export function ProfileCropper({ photo, face, onDone, onCancel }) {
+  const [img, setImg] = useState(null) // { src, naturalWidth, naturalHeight }
   const [frame, setFrame] = useState(300)
   const [view, setView] = useState(null) // { zoom, x, y } x/y: image top-left inside the frame
   const pointers = useRef(new Map())
   const pinch = useRef(null)
   const wrapRef = useRef(null)
+  const moved = useRef(false)
 
   useEffect(() => {
-    const url = URL.createObjectURL(file)
-    const image = new Image()
-    image.onload = () => setImg(image)
-    image.onerror = () => onCancel()
-    image.src = url
-    return () => URL.revokeObjectURL(url)
-  }, [file]) // eslint-disable-line react-hooks/exhaustive-deps
+    let url = null
+    let gone = false
+    photo.toBlob((blob) => {
+      if (gone) return
+      if (!blob) return onCancel()
+      url = URL.createObjectURL(blob)
+      setImg({ src: url, naturalWidth: photo.width, naturalHeight: photo.height })
+    }, 'image/jpeg', 0.92)
+    return () => {
+      gone = true
+      if (url) URL.revokeObjectURL(url)
+    }
+  }, [photo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const size = () => setFrame(Math.min(window.innerWidth - 48, window.innerHeight - 260, 420))
@@ -35,6 +66,8 @@ export function ProfileCropper({ file, face, onDone, onCancel }) {
   }, [])
 
   const base = img ? frame / Math.min(img.naturalWidth, img.naturalHeight) : 1
+  // Zoom in until the circle shows 160 photo pixels: enough for a small face in a big photo.
+  const maxZoom = img ? Math.max(4, Math.min(img.naturalWidth, img.naturalHeight) / 160) : 4
 
   const clamp = (v, z = v.zoom) => {
     const w = img.naturalWidth * base * z
@@ -42,30 +75,31 @@ export function ProfileCropper({ file, face, onDone, onCancel }) {
     return { zoom: z, x: Math.min(0, Math.max(frame - w, v.x)), y: Math.min(0, Math.max(frame - h, v.y)) }
   }
 
-  // Start on the face (about half the frame), else in the middle.
+  // Start in the middle; go to the face (about half the frame) once it is found.
   useEffect(() => {
-    if (!img) return
+    if (!img || moved.current) return
     const w = img.naturalWidth * base
     const h = img.naturalHeight * base
     if (face) {
-      const zoom = Math.max(1, Math.min(5, (0.5 * frame) / (face.w * w)))
+      const zoom = Math.max(1, Math.min(maxZoom, (0.55 * frame) / (face.w * w)))
       const cx = (face.x + face.w / 2) * w * zoom
       const cy = (face.y + face.h / 2) * h * zoom
       setView(clamp({ zoom, x: frame / 2 - cx, y: frame / 2 - cy }, zoom))
     } else {
       setView(clamp({ zoom: 1, x: (frame - w) / 2, y: (frame - h) / 2 }, 1))
     }
-  }, [img, frame]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [img, frame, face]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const zoomTo = (zoom, cx = frame / 2, cy = frame / 2) => {
     setView((v) => {
-      const z = Math.max(1, Math.min(5, zoom))
+      const z = Math.max(1, Math.min(maxZoom, zoom))
       const k = z / v.zoom
       return clamp({ zoom: z, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k }, z)
     })
   }
 
   const onDown = (e) => {
+    moved.current = true
     e.currentTarget.setPointerCapture(e.pointerId)
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     if (pointers.current.size === 2) {
@@ -95,13 +129,15 @@ export function ProfileCropper({ file, face, onDone, onCancel }) {
     const out = document.createElement('canvas')
     out.width = OUT_SIZE
     out.height = OUT_SIZE
-    out.getContext('2d').drawImage(img, -view.x / scale, -view.y / scale, frame / scale, frame / scale, 0, 0, OUT_SIZE, OUT_SIZE)
+    out.getContext('2d').drawImage(photo, -view.x / scale, -view.y / scale, frame / scale, frame / scale, 0, 0, OUT_SIZE, OUT_SIZE)
     onDone(out)
   }
 
   return (
     <div className="flex size-full flex-col items-center justify-center gap-5 bg-black px-6 text-white">
-      <p className="text-center text-sm text-white/80">Move and zoom so the face fills the circle.</p>
+      <p className="text-center text-sm text-white/80">
+        {face === undefined ? 'Looking for the face…' : 'Move and zoom so the face fills the circle.'}
+      </p>
       <div
         ref={wrapRef}
         className="relative touch-none overflow-hidden rounded-xl select-none"
@@ -129,7 +165,7 @@ export function ProfileCropper({ file, face, onDone, onCancel }) {
       {view && (
         <label className="flex w-full max-w-xs items-center gap-3">
           <ZoomIn className="size-5 shrink-0" />
-          <input type="range" min="1" max="5" step="0.01" value={view.zoom} onChange={(e) => zoomTo(Number(e.target.value))} className="w-full accent-white" aria-label="Zoom" />
+          <input type="range" min="1" max={maxZoom} step="0.01" value={view.zoom} onChange={(e) => { moved.current = true; zoomTo(Number(e.target.value)) }} className="w-full accent-white" aria-label="Zoom" />
         </label>
       )}
       <div className="flex w-full max-w-xs gap-3">

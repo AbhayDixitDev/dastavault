@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import { errorMessage } from '@/components/common/ErrorBox'
 import { findFaces, withFace } from '@/services/faces'
-import { ProfileCropper } from './ProfileCropper'
+import { ProfileCropper, loadPhoto } from './ProfileCropper'
 
 const schema = z.object({
   display_name: z.string().min(1, 'Please type a name.'),
@@ -46,15 +46,24 @@ export function PersonDialog({ open, onOpenChange, person, onSaved, initial }) {
   const cameraRef = useRef(null)
   const galleryRef = useRef(null)
 
-  const [cropping, setCropping] = useState(null) // { file, face }
+  const [cropping, setCropping] = useState(null) // { photo, face } face: undefined while looking, null when none
 
-  // A photo is first fitted into the round frame (placed on the face when one is found).
+  // A photo is first fitted into the round frame; the frame moves onto the face once it is found.
   const pickPhoto = async (file) => {
     if (!file) return
     setPhotoBusy(true)
-    const [found] = await findFaces(file, { minScore: 0.3 })
-    setPhotoBusy(false)
-    setCropping({ file, face: found?.box ?? null })
+    let photo
+    try {
+      photo = await loadPhoto(file)
+    } catch {
+      toast.error('This photo could not be opened. Please choose another one.')
+      return
+    } finally {
+      setPhotoBusy(false)
+    }
+    setCropping({ photo, face: undefined })
+    const [found] = await findFaces(photo, { minScore: 0.3 })
+    setCropping((c) => (c?.photo === photo ? { ...c, face: found?.box ?? null } : c))
   }
 
   // The fitted photo becomes the profile photo; its face fingerprint is kept when the face is clear.
@@ -186,7 +195,7 @@ export function PersonDialog({ open, onOpenChange, person, onSaved, initial }) {
           className="top-0 left-0 h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0 bg-black p-0 sm:max-w-none"
         >
           <DialogTitle className="sr-only">Fit the photo</DialogTitle>
-          {cropping && <ProfileCropper file={cropping.file} face={cropping.face} onDone={applyCropped} onCancel={() => setCropping(null)} />}
+          {cropping && <ProfileCropper photo={cropping.photo} face={cropping.face} onDone={applyCropped} onCancel={() => setCropping(null)} />}
         </DialogContent>
       </Dialog>
     </Dialog>
