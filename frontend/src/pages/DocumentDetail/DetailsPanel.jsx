@@ -38,6 +38,8 @@ const SUGGESTION_LABELS = {
   keywords: 'Keywords',
   summary: 'Summary',
   suggested_name: 'Name',
+  title: 'Title',
+  holder_name: 'Name on it',
   person_id: 'Belongs to',
   group_id: 'Group',
 }

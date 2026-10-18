@@ -1,3 +1,5 @@
+import { cleanLines } from './cleanText.js'
+
 /**
  * Reading text from images and PDFs (contract section 10).
  *
@@ -186,6 +188,19 @@ function wordsFrom(data) {
   return out
 }
 
+function linesFrom(data) {
+  const out = []
+  try {
+    for (const b of data?.blocks || []) {
+      for (const p of b.paragraphs || []) {
+        for (const l of p.lines || []) out.push({ text: String(l.text || '').trim(), confidence: (l.confidence || 0) / 100, words: (l.words || []).map((w) => ({ text: w.text, confidence: (w.confidence || 0) / 100 })) })
+        out.push(null) // paragraph break
+      }
+    }
+  } catch { /* partial */ }
+  return out
+}
+
 /**
  * Read text from one image blob.
  */
@@ -201,7 +216,8 @@ export async function readText(blob, { lang, onProgress } = {}) {
     const pass = async (maxSide) => {
       const cleaned = await prepareImage(blob, maxSide)
       const { data } = await worker.recognize(cleaned, {}, { text: true, blocks: true })
-      const text = String(data?.text || '').replace(/[ \t]+\n/g, '\n').trim()
+      // Lines the reader was unsure of (the table, other papers, handwriting) are left out.
+      const text = cleanLines(linesFrom(data)) || String(data?.text || '').replace(/[ \t]+\n/g, '\n').trim()
       const confidence = Math.max(0, Math.min(1, (data?.confidence || 0) / 100))
       return { text, confidence: text.length ? confidence : 0, data }
     }
@@ -214,7 +230,7 @@ export async function readText(blob, { lang, onProgress } = {}) {
       if (detailed.confidence > best.confidence) best = detailed
     }
     onProgress?.({ stage: 'reading', progress: 1 })
-    return { ok: best.text.length > 0, text: best.text, confidence: best.confidence, words: wordsFrom(best.data), language: langs }
+    return { ok: best.text.length > 0, text: best.text, confidence: best.confidence, words: wordsFrom(best.data), lines: linesFrom(best.data), language: langs }
   } catch {
     // A broken reader should not poison the next call.
     await terminateReader()

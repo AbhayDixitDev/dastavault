@@ -183,3 +183,25 @@ test('hammingDistance and dHash', () => {
   assert.equal(h, 'ffffffffffffffff')
   assert.equal(h.length, 16)
 })
+
+test('an undertaking photo: title, summary, and no stray numbers or amounts', () => {
+  const text = [
+    'EMPLOYEE DATA CONFIDENTIALITY AND NON-DISCLOSURE',
+    'UNDERTAKING',
+    'the following in connection with the migration of employee data from the',
+    "ERP system to its newly developed HRMS portal: data from the Company's existing",
+    '3. Authorised Use Only: I shall use employee data solely for the authorised migration,',
+    'development, testing, and validation activities assigned by the Company.',
+    '4. Data Leakage and Legal Action: the Company shall be entitled to investigate the matter and initiate',
+    'proceedings £6 against the person responsible.',
+    '2 D> 9 ENS',
+  ].join('\n')
+  const s = extractSuggestions(text)
+  assert.equal(byKey(s, 'document_type').value, 'agreement')
+  assert.equal(byKey(s, 'title').value, 'Employee Data Confidentiality and Non-Disclosure Undertaking')
+  assert.equal(byKey(s, 'suggested_name').value, 'Employee Data Confidentiality and Non-Disclosure Undertaking')
+  assert.match(byKey(s, 'summary').value, /^Employee Data Confidentiality and Non-Disclosure Undertaking\. Authorised Use Only: I shall use employee data/)
+  assert.equal(byKey(s, 'invoice_number'), undefined) // "inv" in "investigate"
+  assert.equal(byKey(s, 'amount'), undefined)
+  assert.equal(byKey(s, 'organisation'), undefined)
+})

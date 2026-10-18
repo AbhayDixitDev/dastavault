@@ -53,11 +53,11 @@ const NUMBER_PATTERNS = {
 }
 
 const LABELLED = [
-  { key: 'invoice_number', re: /\b(?:invoice|inv|bill)\s*(?:no|number|num|#|id)?\.?\s*[:\-#]?\s*([A-Z0-9][A-Z0-9\-\/.]{2,29})/gi, confidence: 0.8 },
-  { key: 'policy_number', re: /\bpolicy\s*(?:no|number|num|#|id)?\.?\s*[:\-#]?\s*([A-Z0-9][A-Z0-9\-\/]{4,29})/gi, confidence: 0.8 },
-  { key: 'registration_number', re: /\b(?:registration|regn|regd|reg)\.?\s*(?:no|number|num|#)?\.?\s*[:\-#]?\s*([A-Z0-9][A-Z0-9\-\/ ]{3,24}[A-Z0-9])/gi, confidence: 0.7 },
-  { key: 'document_number', re: /\b(?:passport|licen[cs]e|dl|epic|certificate|account|a\/c|acct|consumer|customer|member|membership|roll|enrolment|enrollment|receipt|order|booking|reference|ref|pnr|ticket|application|file|claim|card|id)\s*(?:no|number|num|#|id)?\.?\s*[:\-#]\s*([A-Z0-9][A-Z0-9\-\/]{3,29})/gi, confidence: 0.6 },
-  { key: 'document_number', re: /\b(?:no|number|num|id)\.?\s*[:\-#]\s*([A-Z0-9][A-Z0-9\-\/]{4,29})/gi, confidence: 0.4 },
+  { key: 'invoice_number', re: /\b(?:invoice|inv|bill)\b\.?\s*(?:no|number|num|#|id)?\.?\s*[:\-#]?\s*([A-Z0-9][A-Z0-9\-\/.]{2,29})/gi, confidence: 0.8 },
+  { key: 'policy_number', re: /\bpolicy\b\s*(?:no|number|num|#|id)?\.?\s*[:\-#]?\s*([A-Z0-9][A-Z0-9\-\/]{4,29})/gi, confidence: 0.8 },
+  { key: 'registration_number', re: /\b(?:registration|regn|regd|reg)\b\.?\s*(?:no|number|num|#)?\.?\s*[:\-#]?\s*([A-Z0-9][A-Z0-9\-\/ ]{3,24}[A-Z0-9])/gi, confidence: 0.7 },
+  { key: 'document_number', re: /\b(?:passport|licen[cs]e|dl|epic|certificate|account|a\/c|acct|consumer|customer|member|membership|roll|enrolment|enrollment|receipt|order|booking|reference|ref|pnr|ticket|application|file|claim|card|id)\b\s*(?:no|number|num|#|id)?\.?\s*[:\-#]\s*([A-Z0-9][A-Z0-9\-\/]{3,29})/gi, confidence: 0.6 },
+  { key: 'document_number', re: /\b(?:no|number|num|id)\b\.?\s*[:\-#]\s*([A-Z0-9][A-Z0-9\-\/]{4,29})/gi, confidence: 0.4 },
 ]
 
 const LABEL_WORDS = /^(?:no|number|num|date|dated|name|of|the|and|is|to|from|invoice|bill|policy|reg|regn)$/i
@@ -126,7 +126,10 @@ const CURRENCY = { '₹': 'INR', rs: 'INR', 'rs.': 'INR', inr: 'INR', $: 'USD', 
 const AMOUNT_RE = /(₹|rs\.?|inr|us\$|\$|usd|€|eur|£|gbp|aed|sgd)\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)(?![0-9])|(?<![0-9])([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)\s*(₹|rs\.?|inr|usd|eur|gbp|aed|sgd|\/-)/gi
 const TOTAL_WORDS = /(grand\s*total|net\s*(?:payable|amount|total)|total\s*(?:amount|due|payable)?|amount\s*(?:due|payable|paid)|balance\s*due|payable|sum\s*insured|sum\s*assured|premium|net\s*pay)/i
 
-export function findAmount(text) {
+/** Documents about money: an amount on other papers is usually a stray number. */
+const MONEY_TYPES = new Set(['invoice', 'receipt', 'bank_statement', 'tax', 'salary_slip', 'utility_bill', 'insurance', 'ticket', 'property', 'vehicle'])
+
+export function findAmount(text, documentType) {
   const src = String(text || '')
   const found = []
   let m
@@ -142,6 +145,9 @@ export function findAmount(text) {
     const context = before.slice(lineStart + 1)
     const total = TOTAL_WORDS.test(context) ? (/grand|net|payable|due/i.test(context) ? 2 : 1) : 0
     found.push({ value, currency, total, index: m.index })
+  }
+  if (documentType && !MONEY_TYPES.has(documentType)) {
+    for (let i = found.length - 1; i >= 0; i--) if (!found[i].total) found.splice(i, 1)
   }
   if (!found.length) return null
   found.sort((a, b) => b.total - a.total || b.value - a.value)
@@ -172,6 +178,18 @@ export function findPhone(text) {
 const ORG_SUFFIX = /\b(ltd|limited|llp|pvt|private|inc|corp|corporation|co\.|company|bank|insurance|assurance|hospital|hospitals|clinic|school|college|university|institute|academy|government|ministry|department|authority|council|municipal|corporation|technologies|solutions|services|systems|industries|enterprises|trust|foundation|society|association|board|commission|agency|stores?|mart|motors|finance|financial|capital|securities|labs?|laboratories|pharma|pharmacy|airlines|railways?|telecom|electricity|power|energy|gas)\b/i
 const BRANDS = ['LIC', 'Life Insurance Corporation', 'SBI', 'State Bank of India', 'HDFC', 'ICICI', 'Axis Bank', 'Kotak', 'Yes Bank', 'IndusInd', 'Punjab National Bank', 'Bank of Baroda', 'Canara Bank', 'Union Bank', 'IDFC', 'Airtel', 'Jio', 'Vodafone', 'Vi', 'BSNL', 'Reliance', 'Tata', 'Infosys', 'Wipro', 'TCS', 'HCL', 'Amazon', 'Flipkart', 'Google', 'Microsoft', 'Apple', 'Samsung', 'Adani', 'Bajaj', 'Max Life', 'Star Health', 'Niva Bupa', 'Care Health', 'New India Assurance', 'United India', 'Oriental Insurance', 'ICICI Lombard', 'HDFC Ergo', 'Apollo', 'Fortis', 'Max Healthcare', 'Medanta', 'AIIMS', 'CBSE', 'ICSE', 'NCERT', 'IGNOU', 'UIDAI', 'Passport Seva', 'Income Tax Department', 'Government of India', 'MSEB', 'MSEDCL', 'BESCOM', 'BSES', 'Tata Power', 'Torrent Power', 'Adani Electricity', 'Indian Oil', 'Bharat Petroleum', 'Hindustan Petroleum', 'IRCTC', 'Indian Railways', 'IndiGo', 'Air India', 'SpiceJet', 'Vistara', 'Ola', 'Uber', 'Swiggy', 'Zomato', 'Paytm', 'PhonePe', 'Zerodha', 'Groww', 'EPFO', 'ESIC', 'NPS', 'Delhi University', 'Mumbai University', 'Anna University', 'VTU', 'IIT', 'NIT', 'BITS', 'Zoho', 'Pabbly']
 
+/** "EMPLOYEE DATA CONFIDENTIALITY UNDERTAKING" is the paper's title, not who issued it. */
+const TITLE_WORDS = /\b(undertaking|agreement|declaration|confidentiality|non-disclosure|affidavit|certificate|invoice|receipt|statement|report|application|form|letter|notice|policy|schedule|annexure|contract)\b/i
+
+/** Mostly real words: "2 D> 9 ENS" is noise from the photo, not a name. */
+function wordy(line) {
+  const chars = line.replace(/\s/g, '')
+  const words = line.split(' ').filter(Boolean)
+  return count(chars, /[A-Za-z&.]/g) >= chars.length * 0.85 && words.filter((w) => /[A-Za-z]{2,}/.test(w)).length >= Math.max(2, words.length * 0.8)
+}
+
+function count(s, re) { return (String(s).match(re) || []).length }
+
 function isTitleCase(line) {
   const words = line.split(' ').filter((w) => /[a-z]/i.test(w))
   if (words.length < 2 || words.length > 8) return false
@@ -197,7 +215,9 @@ export function findOrganisation(text) {
     }
   }
   ls.forEach((line, i) => {
-    if (/\d{4,}/.test(line) || /@/.test(line)) return
+    if (/\d{4,}/.test(line) || /@/.test(line) || TITLE_WORDS.test(line) || !wordy(line)) return
+    // A sentence that mentions "the Company" is not the company's name.
+    if (/^[a-z]/.test(line) || (/[,;]/.test(line) && line.split(' ').length > 5)) return
     const positional = Math.max(0, 0.1 - i * 0.01)
     if (ORG_SUFFIX.test(line) && line.split(' ').length <= 10) consider(line, 0.7 + positional)
     else if (line === line.toUpperCase() && /[A-Z]{3,}/.test(line) && line.split(' ').length >= 2 && line.split(' ').length <= 8 && !/^(TAX INVOICE|INVOICE|RECEIPT|CERTIFICATE|STATEMENT|BILL|PASSPORT|REPUBLIC OF INDIA|GOVERNMENT OF INDIA|INCOME TAX DEPARTMENT|ORIGINAL|COPY|DUPLICATE)$/.test(line)) consider(line, 0.45 + positional)
@@ -334,11 +354,61 @@ export function findKeywords(text, limit = 8) {
     .map((k) => k.w)
 }
 
-export function makeSummary(text, max = 160) {
-  const good = lines(text).filter((l) => l.length >= 15 && (l.match(/[a-z]/gi) || []).length >= l.length * 0.5)
-  const joined = good.slice(0, 2).join(' ').replace(/\s+/g, ' ').trim()
-  if (joined.length <= max) return joined
-  const cut = joined.slice(0, max - 1)
+const SMALL_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'in', 'of', 'on', 'or', 'the', 'to', 'with'])
+
+function titleCase(line) {
+  return line.toLowerCase().split(' ').map((w, i) => (i && SMALL_WORDS.has(w) ? w : w.replace(/(^|-)(\p{L})/gu, (m, a, b) => a + b.toUpperCase()))).join(' ')
+}
+
+/**
+ * The paper's heading: a capitals line near the top that names a kind of
+ * paper ("EMPLOYEE DATA CONFIDENTIALITY AND NON-DISCLOSURE" + "UNDERTAKING").
+ * Issuer lines such as "GOVERNMENT OF INDIA" are not a title.
+ */
+export function findTitle(text) {
+  const ls = lines(text)
+  const caps = (l) => l && l === l.toUpperCase() && count(l, /[A-Z]/g) >= 4 && count(l, /[A-Za-z]/g) >= l.replace(/\s/g, '').length * 0.8
+  for (let i = 0; i < Math.min(ls.length, 8); i++) {
+    if (!caps(ls[i]) || count(ls[i], /[A-Z]/g) < 8) continue
+    const next = ls[i + 1]
+    const joined = caps(next) && next.split(' ').length <= 4 ? `${ls[i]} ${next}` : ls[i]
+    if (!TITLE_WORDS.test(joined)) continue
+    const title = titleCase(joined.replace(/[^A-Za-z0-9 &/'-]+/g, ' ').replace(/\s+/g, ' ').trim())
+    return title.length <= 100 ? title : null
+  }
+  return null
+}
+
+/** How much of a sentence is plain words (not noise from the reader). */
+function clarity(sentence) {
+  const words = sentence.split(' ').filter(Boolean)
+  if (words.length < 6) return 0
+  return words.filter((w) => /^[("'‘“]?[A-Za-z][a-z'’-]*[)"'’”.,;:!?]*$/.test(w) || /^[A-Z]{2,}[.,;:]?$/.test(w) || /^\d+[.,)]?$/.test(w)).length / words.length
+}
+
+/**
+ * A short summary: the title, then the clear sentence that says most about
+ * the paper (carries most of its keywords), preferring early ones.
+ */
+export function makeSummary(text, max = 240) {
+  const ls = lines(text)
+  const title = findTitle(text)
+  const inTitle = (l) => title && normalise(title).includes(normalise(l))
+  const body = ls.filter((l) => !inTitle(l)).join(' ').replace(/\s+/g, ' ')
+  const keywords = findKeywords(text, 10)
+  const weight = new Map(keywords.map((k, i) => [k, 1 - i * 0.06]))
+  let best = null
+  body.split(/(?<=[.!?])\s+(?=[A-Z0-9(])/).forEach((raw, i) => {
+    const s = raw.replace(/^\d+\.\s*/, '').trim()
+    if (s.length < 40 || s.length > 300 || !/^[A-Z]/.test(s) || clarity(s) < 0.9) return
+    const words = normalise(s).split(' ')
+    const score = words.reduce((sum, w) => sum + (weight.get(w) || 0), 0) / Math.sqrt(words.length) - i * 0.03
+    if (!best || score > best.score) best = { s, score }
+  })
+  const fallback = ls.filter((l) => l.length >= 15 && (l.match(/[a-z]/gi) || []).length >= l.length * 0.5).slice(0, 2).join(' ')
+  const summary = ([title, best?.s].filter(Boolean).join('. ') || fallback).replace(/\s+/g, ' ').trim()
+  if (summary.length <= max) return summary
+  const cut = summary.slice(0, max - 1)
   return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), max - 30))}…`
 }
 
@@ -373,7 +443,7 @@ export function extractSuggestions(text, options) {
 
     for (const n of findNumbers(src, documentType)) add(n.key, n.value, n.confidence)
 
-    const amount = findAmount(src)
+    const amount = findAmount(src, documentType)
     if (amount) {
       add('amount', amount.amount.toFixed(2).replace(/\.00$/, ''), amount.confidence)
       add('currency', amount.currency, amount.confidence)
@@ -400,6 +470,9 @@ export function extractSuggestions(text, options) {
     if (holder) add('holder_name', holder.value, holder.confidence)
     const group = matchGroups(src, groups)
     if (group?.group?.id) add('group_id', group.group.id, group.confidence)
+
+    const title = findTitle(src)
+    if (title) add('title', title, 0.6)
 
     const keywords = findKeywords(src)
     if (keywords.length) add('keywords', keywords.join(', '), 0.5)
@@ -446,6 +519,12 @@ export function suggestDocumentName(args) {
     // The issuer of an ID card ("Government of India") says nothing about the document.
     const usefulOrg = org && org.length <= 40 && !/\b(government|govt|department|authority|of india|republic)\b/i.test(org) ? org : null
     const middle = usefulOrg || identifier
+    // "Employee Data Confidentiality and Non-Disclosure Undertaking" says more than "Agreement".
+    const title = valueOf(suggestions, 'title')
+    if (title && !middle) {
+      const titled = [person, title, year].filter(Boolean).join(' - ')
+      if (titled.length <= 80) return titled
+    }
     const parts = [person, typeName, middle, year].filter((p) => p && String(p).trim())
     if (!parts.length) return fallbackName || ''
     let name = parts.map((p) => String(p).trim()).join(' - ')
@@ -501,6 +580,8 @@ export function suggestNameVariants(args) {
 
     const best = suggestDocumentName({ suggestions, people, fallbackName: '' })
     if (best) out.push(best)
+    const title = valueOf(suggestions, 'title')
+    if (title) push(title, person)
     push(person, typeName)
     push(typeName, person)
     if (expiry) push(person, typeName, `valid till ${expiry.slice(0, 4)}`)
